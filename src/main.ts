@@ -291,22 +291,23 @@ window.addEventListener('beforeunload', () => { if (started) save(); });
 let last = performance.now(), acc = 0, hudT = 0, saveT = 0;
 function loop(now: number) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.1, (now - last) / 1000);
+  const real = Math.min(0.3, (now - last) / 1000); // camera keys follow real time even when frames are slow
+  const dt = Math.min(0.1, real);
   last = now;
   const c = renderer.cam;
 
   if (!started) c.tyaw += dt * 0.05;
   else {
     // camera keys
-    const sp = c.dist * 0.9 * dt, fx = -Math.sin(c.yaw), fz = -Math.cos(c.yaw);
+    const sp = c.dist * 0.9 * real, fx = -Math.sin(c.yaw), fz = -Math.cos(c.yaw);
     let mx = 0, mz = 0;
     if (keys.has('w') || keys.has('arrowup')) { mx += fx; mz += fz; }
     if (keys.has('s') || keys.has('arrowdown')) { mx -= fx; mz -= fz; }
     if (keys.has('a') || keys.has('arrowleft')) { mx += fz; mz -= fx; }
     if (keys.has('d') || keys.has('arrowright')) { mx -= fz; mz += fx; }
     c.tx += mx * sp; c.tz += mz * sp;
-    if (keys.has('q')) c.tyaw += dt * 1.6;
-    if (keys.has('e')) c.tyaw -= dt * 1.6;
+    if (keys.has('q')) c.tyaw += real * 1.6;
+    if (keys.has('e')) c.tyaw -= real * 1.6;
 
     acc += dt * app.speed;
     let steps = 0;

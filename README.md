@@ -58,9 +58,25 @@ The title screen offers three difficulties: **Peaceful** (no raids — a pure bu
 
 The game autosaves to the browser every 20 seconds.
 
+## Testing
+
+```bash
+npm test
+```
+
+runs 29 simulation tests (about a minute), including:
+
+- **Scripted campaigns** on six different islands and all three difficulties: a rule-following player builds a town from nothing, trades, raises armies and razes all three strongholds, with state invariants checked every few seconds.
+- **Monkey testing**: thousands of random actions per island, legal or not, with save/load in the middle. Nothing may throw, and a reloaded game must serialise identically.
+- A test per mechanic (housing tiers, contracts, forester, charm, spire and chapel in the Dark World, crystals, orders, difficulty).
+
+`e2e/` holds two browser scripts that use only real mouse, keyboard and touch input: a 105-point checklist of every control, and a full campaign played by clicking. See `e2e/README.md`.
+
+Useful URL switches: `?seed=2024` starts on a specific island, `?gfx=low` turns off shadows and bloom (also in the ☰ menu).
+
 ## Code map
 
 - `src/sim/` — the game rules, independent of rendering: `world.ts` (island generation), `economy.ts`, `trade.ts`, `combat.ts`, `quests.ts`, `defs.ts` (all balance numbers).
 - `src/render/` — three.js scene: terrain and water, procedural building/unit models, particles, the light/dark switch.
 - `src/ui/` — HUD, panels, minimap and procedural audio.
-- `tests/` — simulation tests, including a scripted player that plays a whole campaign without cheats to keep the balance honest.
+- `tests/` — simulation tests; `e2e/` — browser tests.

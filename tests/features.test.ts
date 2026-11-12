@@ -60,6 +60,27 @@ describe('charm', () => {
   });
 });
 
+describe('housing tiers', () => {
+  it('homes climb from Settlers to Burghers to Luminaries when their needs are in reach', () => {
+    const g = rich(2024);
+    const S = g.state, s = g.world.start;
+    const stocked = () => { for (const k in S.stock) (S.stock as Record<string, number>)[k] = Math.max((S.stock as Record<string, number>)[k], 40); };
+    for (let x = s.x - 4; x <= s.x + 8; x++) g.placeRoad(x, s.z + 2);
+    for (let x = s.x - 2; x <= s.x + 4; x += 2) expect(g.place('house', x, s.z + 3).ok).toBe(true);
+    const houses = S.buildings.filter((b) => b.type === 'house');
+    for (const t of ['market', 'chapel', 'spire'] as const) placeNear(g, t, s.x + 6, s.z + 5);
+    for (let t = 0; t < 200; t++) { stocked(); run(g, 1); }
+    expect(houses.every((h) => h.tier === 2)).toBe(true);
+    expect(houses.every((h) => Math.floor(h.residents!) === 28)).toBe(true);
+    // without shards the spire goes dark and Luminaries lose that need
+    S.stock.shards = 0;
+    for (let t = 0; t < 200; t++) { stocked(); S.stock.shards = 0; run(g, 1); }
+    expect(g.find('spire')!.fuel).toBe(0);
+    expect(houses[0].sat!).toBeLessThan(0.9);
+    expect(Math.floor(houses[0].residents!)).toBeLessThan(28);
+  });
+});
+
 describe('contracts', () => {
   it('merchants offer contracts that pay out on delivery', () => {
     const g = rich();
