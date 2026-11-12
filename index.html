@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Dark &amp; Light</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='46' fill='%23f6c95a'/><path d='M50 4a46 46 0 0 0 0 92z' fill='%232a1648'/></svg>" />
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="vignette"></div>
+  <div id="ui">
+    <div id="topbar"></div>
+    <div id="quest"></div>
+    <div id="toasts"></div>
+    <div id="panel" class="card hidden"></div>
+    <canvas id="minimap" width="168" height="168"></canvas>
+    <div id="bottombar" class="card"></div>
+    <button id="worldBtn" title="Switch world (Tab)"><span class="sun">☀️</span><span class="moon">🌙</span><small></small></button>
+    <div id="alert" class="hidden"></div>
+    <div id="tooltip" class="card hidden"></div>
+    <div id="selbox" class="hidden"></div>
+  </div>
+  <div id="rift"></div>
+  <div id="title">
+    <div class="titlebox">
+      <div class="logo"><span class="l">Light</span><span class="amp">&amp;</span><span class="d">Dark</span></div>
+      <h1>Dark <i>&amp;</i> Light</h1>
+      <p class="tag">Build a thriving island city in the Light.<br />Cross the Rift and fight for it in the Dark.</p>
+      <div class="btns">
+        <button id="btnContinue" class="big hidden">Continue</button>
+        <button id="btnNew" class="big">New Game</button>
+      </div>
+      <div class="how">
+        <b>Build</b> homes, farms and workshops · <b>Trade</b> with merchant ships at your harbor ·
+        <b>Raise</b> the Rift Gate and press <kbd>Tab</kbd> to enter the Dark World · <b>Lead</b> your soldiers against three dark strongholds.
+        <br /><br />
+        <kbd>WASD</kbd> move · <kbd>Q</kbd>/<kbd>E</kbd> or right-drag rotate · <kbd>Wheel</kbd> zoom · <kbd>Esc</kbd> cancel
+      </div>
+    </div>
+  </div>
+  <div id="modal" class="hidden"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
