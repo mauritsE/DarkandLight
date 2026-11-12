@@ -40,6 +40,8 @@ export class Hud {
   private mapBase: HTMLCanvasElement = document.createElement('canvas');
   private mapKey = '';
   private goodEls = {} as Record<Good, HTMLElement>;
+  private seen = new Set<Good>();
+  private seenFor: unknown = null;
 
   constructor(private app: App) {
     this.mapBase.width = this.mapBase.height = N;
@@ -238,6 +240,7 @@ export class Hud {
     $('s-hap').textContent = `${Math.round(S.happiness * 100)}%`;
     $('s-face').textContent = S.happiness > 0.8 ? '😊' : S.happiness > 0.5 ? '😐' : '😟';
     const cap = g.storageCap();
+    if (this.seenFor !== S) { this.seenFor = S; this.seen.clear(); }
     for (const k of GOOD_IDS) {
       const el = this.goodEls[k], v = Math.floor(S.stock[k]), r = g.rates[k], net = r.prod - r.cons;
       (el.children[0] as HTMLElement).textContent = String(v);
@@ -245,7 +248,9 @@ export class Hud {
       tr.textContent = net > 0.15 ? '▲' : net < -0.15 ? '▼' : '';
       tr.style.color = net > 0 ? 'var(--good)' : 'var(--bad)';
       el.title = `${GOODS[k].name}: ${v} / ${cap}\nProduced ${r.prod.toFixed(1)}/min · used ${r.cons.toFixed(1)}/min`;
-      el.className = `stat${v === 0 ? ' zero' : ''}${v >= cap ? ' low' : ''}`;
+      // goods the city has never held or made stay out of the bar until they matter
+      if (v > 0 || r.prod > 0 || r.cons > 0) this.seen.add(k);
+      el.className = `stat${v === 0 ? ' zero' : ''}${v >= cap ? ' low' : ''}${this.seen.has(k) ? '' : ' unseen'}`;
     }
     document.querySelectorAll<HTMLElement>('.speed button').forEach((b) => b.classList.toggle('on', +b.dataset.n! === app.speed));
 
@@ -378,7 +383,10 @@ export class Hud {
       }
       return h + '</table>';
     }
-    S.ships.forEach((sh, si) => {
+    // ships in port come first, so their trade table is never below the fold
+    const order = S.ships.map((_, i) => i).sort((a, b) => +(S.ships[b].phase === 'docked') - +(S.ships[a].phase === 'docked'));
+    for (const si of order) {
+      const sh = S.ships[si];
       const m = MERCHANTS[sh.merchant];
       const col = `#${m.color.toString(16).padStart(6, '0')}`;
       const phase = sh.phase === 'docked' ? `<span class="ok">Docked — leaves in ${Math.ceil(sh.t)}s</span>` : sh.phase === 'arriving' ? 'Sailing in…' : sh.phase === 'leaving' ? 'Setting sail' : `At sea — back in ~${Math.ceil(sh.t / 10) * 10}s`;
@@ -399,7 +407,7 @@ export class Hud {
         h += `<br><span class="muted">Pays well for ${likes} · sells ${Object.keys(m.sells).map((k) => GOODS[k as Good].icon).join(' ')}</span>`;
       }
       h += '</div>';
-    });
+    }
     return h;
   }
 

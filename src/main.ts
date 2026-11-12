@@ -16,7 +16,10 @@ const sound = new Sound();
 let started = false;
 let switching = false;
 let difficulty = 1;
-const newSeed = () => (Math.random() * 1e9) | 0;
+const urlSeed = Number(new URLSearchParams(location.search).get('seed'));
+let seedUsed = false;
+/** A random island, or the one named by ?seed=N for the first game of this page load. */
+const newSeed = () => { if (urlSeed > 0 && !seedUsed) { seedUsed = true; return urlSeed | 0; } return (Math.random() * 1e9) | 0; };
 
 const app: App = {
   game: Game.create(newSeed()),
@@ -336,8 +339,8 @@ function loop(now: number) {
     saveT += dt;
     if (saveT > 20) { saveT = 0; save(); }
   }
-  hudT += dt;
-  if (hudT > 0.2) { hudT = 0; if (started) hud.refresh(); }
+  // the HUD follows the wall clock, so it stays responsive even when frames are slow
+  if (now - hudT > 180) { hudT = now; if (started) hud.refresh(); }
   renderer.frame(dt);
 }
 

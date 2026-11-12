@@ -48,6 +48,8 @@ export class World {
   type = new Uint8Array(N * N);
   start: Pt = { x: 0, z: 0 };
   campSites: Pt[] = [];
+  /** 1 for walkable tiles connected to the start site (the main landmass). */
+  reach = new Uint8Array(N * N);
   genSeed = 0;
 
   constructor(public seed: number) {
@@ -73,6 +75,8 @@ export class World {
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
   }
   isLand(x: number, z: number) { return this.inb(x, z) && this.type[z * N + x] !== T.Water; }
+  /** Walkable and connected to the rest of the island (not a stranded ledge). */
+  isReach(x: number, z: number) { return this.inb(x, z) && this.reach[z * N + x] === 1; }
   isWalk(x: number, z: number) {
     if (!this.inb(x, z)) return false;
     const t = this.type[z * N + x];
@@ -136,6 +140,7 @@ export class World {
 
     // BFS walking distance from start.
     const dist = this.bfs(bx, bz);
+    for (let i = 0; i < N * N; i++) this.reach[i] = dist[i] >= 0 ? 1 : 0;
     const cands: { x: number; z: number; d: number }[] = [];
     for (let z = 4; z < N - 4; z++) for (let x = 4; x < N - 4; x++) {
       const d = dist[z * N + x];

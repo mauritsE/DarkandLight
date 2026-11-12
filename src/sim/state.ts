@@ -42,6 +42,7 @@ export interface Entity {
   hx: number; hz: number; // home
   camp: number; // camp index or -1
   raid?: boolean;
+  raidT?: number; // when the raid set out
   face: number;
   moving?: boolean;
   atkT?: number; // time of last attack (for animation)

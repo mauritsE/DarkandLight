@@ -159,7 +159,7 @@ function spawnRaid(g: Game) {
   const n = Math.min(3 + Math.floor(S.raidCount * 0.5), 6 + 2 * (S.camps.length - live.length)) + (S.difficulty >= 2 ? 2 : 0);
   for (let i = 0; i < n; i++) {
     const e = g.spawnNear(cd.raid[i % cd.raid.length], 1, site.x + 0.5 + (g.rand() - 0.5) * 4, site.z + 2.5 + g.rand() * 2, ci);
-    e.raid = true; e.order = ORDER.AttackMove; e.ox = gate.x; e.oz = gate.z;
+    e.raid = true; e.raidT = S.time; e.order = ORDER.AttackMove; e.ox = gate.x; e.oz = gate.z;
   }
   S.raidCount++;
   g.events.push({ t: 'raid', camp: ci });
@@ -281,6 +281,8 @@ export function tickCombat(g: Game, dt: number) {
     const d = UNITS[e.kind];
     e.cd -= dt; e.think -= dt; e.moving = false;
     if (e.think <= 0) { e.think = 0.3 + g.rand() * 0.15; acquire(g, e); }
+    // a raider that has wandered for five minutes without finding a fight slinks home
+    if (e.raid && !e.tgt && S.time - (e.raidT ?? S.time) > 300) { e.hp = -1e9; continue; }
     const t = e.tgt ? g.entById.get(e.tgt) : undefined;
     if (t && t.hp > 0 && !t.down) {
       const dist = Math.hypot(t.x - e.x, t.z - e.z) - UNITS[t.kind].radius;
@@ -354,7 +356,7 @@ export function tickCombat(g: Game, dt: number) {
       for (const r of ents) if (r.raid) r.hp = -1e9; // raiders vanish with their plunder
       g.events.push({ t: 'breach' });
       g.toast(`💀 The Rift Gate was breached! Raiders plundered ${lost} gold from your city.`, 'warn');
-    } else onDeath(g, e);
+    } else if (e.hp > -1e8) onDeath(g, e); // (raiders that simply left give no loot)
   }
   if (dead.length) {
     S.entities = ents.filter((e) => {

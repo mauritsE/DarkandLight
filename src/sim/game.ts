@@ -368,7 +368,7 @@ export class Game {
   spawnNear(kind: Entity['kind'], team: number, x: number, z: number, camp: number): Entity {
     for (let i = 0; i < 20; i++) {
       const px = x + (i ? (this.rand() - 0.5) * (1 + i * 0.3) : 0), pz = z + (i ? (this.rand() - 0.5) * (1 + i * 0.3) : 0);
-      if (this.world.isWalk(Math.floor(px), Math.floor(pz))) return this.spawn(kind, team, px, pz, camp);
+      if (this.world.isReach(Math.floor(px), Math.floor(pz))) return this.spawn(kind, team, px, pz, camp);
     }
     // hemmed in by rock or water: fall back to the closest ground there is
     const p = nearestWalk(this.world, x, z);
