@@ -138,7 +138,7 @@ export class Terrain {
     const g = this.game;
     if (this.ver.t !== g.terrainVer) { this.ver.t = g.terrainVer; this.rebuildTerrain(); this.ver.tr = -1; this.ver.r = -1; }
     if (this.ver.r !== g.roadVer) { this.ver.r = g.roadVer; this.rebuildRoads(); this.rebuildColors(); }
-    if (this.ver.tr !== g.treeVer) { this.ver.tr = g.treeVer; this.rebuildTrees(); }
+    if (this.ver.tr !== g.treeVer) { this.ver.tr = g.treeVer; this.rebuildTrees(); this.rebuildColors(); }
   }
 
   private rebuildTerrain() {

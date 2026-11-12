@@ -1,11 +1,11 @@
 import {
-  ARMY_PER_BARRACKS, BUILDINGS, BuildingId, CAMPS, Category, Cost, GOODS, GOOD_IDS, Good, MAX_BEACONS, MERCHANTS,
-  ROAD_COST, TIERS, TRAINABLE, TRAIN_TIME, UNITS, UnitKind,
+  ARMY_PER_BARRACKS, BEAUTY_TAX, BUILDINGS, BuildingId, CAMPS, CHAPEL_RANGE, Category, Cost, GOODS, GOOD_IDS, Good, MAX_BEACONS, MERCHANTS,
+  ROAD_COST, SPIRE_RANGE, TIERS, TRAINABLE, TRAIN_TIME, UNITS, UnitKind,
 } from '../sim/defs';
 import type { Game } from '../sim/game';
 import { armyCap, armySize, canTrain, train } from '../sim/combat';
 import { QUESTS } from '../sim/quests';
-import { buy, buyPrice, sell, sellPrice } from '../sim/trade';
+import { buy, buyPrice, canDeliver, deliver, sell, sellPrice } from '../sim/trade';
 import type { Status } from '../sim/state';
 import { N, T } from '../sim/world';
 import type { PreviewKind, Renderer } from '../render/renderer';
@@ -13,7 +13,8 @@ import type { Sound } from './audio';
 
 export interface App {
   game: Game; renderer: Renderer; sound: Sound;
-  dark: boolean; tool: PreviewKind; speed: number;
+  dark: boolean; tool: PreviewKind; speed: number; charge: boolean;
+  retreat(): void;
   setTool(t: PreviewKind): void;
   toggleWorld(): void;
   setSpeed(n: number): void;
@@ -27,11 +28,12 @@ const STATUS: Record<Status, [string, boolean]> = {
   ok: ['Working', true], noRoad: ['No road to the Keep', false], noInput: ['Waiting for materials', false],
   full: ['Storage is full', false], noWorkers: ['Short of workers', false], noResource: ['No resource in reach', false], paused: ['Paused', false],
 };
-const TABS: [Category, string][] = [['civic', '🏠 Town'], ['production', '⚒️ Production'], ['war', '⚓ Trade & War']];
+const TABS: [Category, string][] = [['civic', '🏠 Town'], ['production', '⚒️ Production'], ['war', '⚓ Trade & War'], ['decor', '🌷 Beauty']];
 
 export class Hud {
   private tab: Category = 'civic';
-  private panel: { kind: 'none' } | { kind: 'building'; id: number } = { kind: 'none' };
+  private panel: { kind: 'none' } | { kind: 'building'; id: number } | { kind: 'ledger' } = { kind: 'none' };
+  private alertTarget: { x: number; z: number } | null = null;
   private tradeTab: 'ships' | 'orders' = 'ships';
   private last: Record<string, string> = {};
   private mapBase: HTMLCanvasElement = document.createElement('canvas');
@@ -42,7 +44,7 @@ export class Hud {
     this.mapBase.width = this.mapBase.height = N;
     const tb = $('topbar');
     tb.innerHTML = `
-      <div class="stat main" title="Gold">🪙 <b id="s-gold"></b> <small id="s-inc"></small></div>
+      <div class="stat main click" data-act="ledger" title="Gold — click for the ledger">🪙 <b id="s-gold"></b> <small id="s-inc"></small></div>
       <div class="stat" title="Residents / jobs">👥 <b id="s-pop"></b> <small id="s-jobs"></small></div>
       <div class="stat" title="Happiness of your residents"><span id="s-face">😊</span> <b id="s-hap"></b></div>
       <div class="goods" id="s-goods"></div>
@@ -54,7 +56,7 @@ export class Hud {
     for (const g of GOOD_IDS) {
       const el = document.createElement('div');
       el.className = 'stat'; el.title = GOODS[g].name;
-      el.innerHTML = `${GOODS[g].icon} <b></b>`;
+      el.innerHTML = `${GOODS[g].icon} <b></b><i class="tr"></i>`;
       goods.appendChild(el); this.goodEls[g] = el;
     }
     $('s-mute').textContent = app.sound.muted ? '🔇' : '🔊';
@@ -94,6 +96,11 @@ export class Hud {
       case 'tab': this.tab = d.t as Category; snd.click(); break;
       case 'tool': app.setTool(app.tool === d.t ? null : (d.t as PreviewKind)); snd.click(); break;
       case 'close': this.closePanel(); break;
+      case 'ledger': if (this.panel.kind === 'ledger') this.closePanel(); else { this.closePanel(); this.panel = { kind: 'ledger' }; } snd.click(); break;
+      case 'alert': if (this.alertTarget) app.renderer.focus(this.alertTarget.x, this.alertTarget.z); break;
+      case 'deliver': if (deliver(g, +d.i!)) snd.quest(); else snd.error(); break;
+      case 'charge': app.charge = !app.charge; snd.click(); break;
+      case 'retreat': app.retreat(); break;
       case 'demolish': if (g.demolish(+d.id!)) { snd.demolish(); this.closePanel(); } break;
       case 'pause': { const b = g.byId.get(+d.id!); if (b) b.paused = !b.paused; break; }
       case 'auto': g.state.autoUpgrade = !g.state.autoUpgrade; break;
@@ -114,8 +121,55 @@ export class Hud {
   }
 
   modal(html: string) { $('modal').innerHTML = `<div class="card">${html}</div>`; $('modal').classList.remove('hidden'); }
-  openBuilding(id: number) { this.panel = { kind: 'building', id }; this.refresh(); }
-  closePanel() { this.panel = { kind: 'none' }; this.refresh(); }
+  openBuilding(id: number) {
+    this.panel = { kind: 'building', id };
+    const b = this.g.byId.get(id), r = this.app.renderer;
+    if (b) {
+      const c = this.g.center(b), d = BUILDINGS[b.type];
+      r.setRange(c.x, c.z, d.radius ?? (b.type === 'woodcutter' || b.type === 'forester' ? 4.8 : 0));
+    }
+    this.refresh();
+  }
+  closePanel() { this.panel = { kind: 'none' }; this.app.renderer.setRange(0, 0, 0); this.refresh(); }
+
+  /** A little label that floats up from a point on screen (e.g. "+1 🪵"). */
+  popup(x: number, y: number, text: string, cls = '') {
+    const layer = $('pops');
+    if (layer.childElementCount > 28) return;
+    const el = document.createElement('div');
+    el.className = `pop ${cls}`; el.textContent = text;
+    el.style.left = `${x}px`; el.style.top = `${y}px`;
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), 1300);
+  }
+  /** Placement hint that follows the cursor. Empty text hides it. */
+  hint(text: string, x = 0, y = 0, ok = true) {
+    const el = $('hint');
+    if (!text) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    el.textContent = text; el.className = ok ? 'card' : 'card bad';
+    el.style.left = `${x + 18}px`; el.style.top = `${y + 18}px`;
+  }
+
+  /** The most pressing problems in the city, each with a place to look at. */
+  private alerts(): { text: string; x: number; z: number }[] {
+    const g = this.g, S = g.state, out: { text: string; x: number; z: number }[] = [];
+    const at = (b: { x: number; z: number }, text: string) => out.push({ text, x: b.x + 1, z: b.z + 1 });
+    const by = (st: Status) => S.buildings.filter((b) => b.status === st && BUILDINGS[b.type].category !== 'decor');
+    const noRoad = by('noRoad');
+    if (noRoad.length) at(noRoad[0], `${noRoad.length} building${noRoad.length > 1 ? 's' : ''} without a road to the Keep`);
+    const noRes = by('noResource');
+    if (noRes.length) at(noRes[0], `${BUILDINGS[noRes[0].type].name} has nothing in reach${noRes[0].type === 'woodcutter' ? ' — build a Forester' : ''}`);
+    const th = g.find('townhall')!;
+    for (const k of ['fish', 'bread', 'cloth'] as Good[]) if ((S.needSat[k] ?? 1) < 0.5 && g.rates[k].cons > 0) at(th, `Residents lack ${GOODS[k].name.toLowerCase()}`);
+    if (S.jobs > S.pop * 1.15 && S.jobs > 0) at(th, `Not enough workers (${S.pop} for ${S.jobs} jobs) — build houses`);
+    const noIn = by('noInput');
+    if (noIn.length) at(noIn[0], `${BUILDINGS[noIn[0].type].name} is waiting for materials`);
+    const full = by('full');
+    if (full.length) at(full[0], `Storage full — ${BUILDINGS[full[0].type].name} idle. Sell goods or build a Warehouse`);
+    if (S.income < 0 && S.gold < 300) at(th, 'Treasury is draining');
+    return out.slice(0, 3);
+  }
 
   toast(msg: string, kind: string = 'info') {
     const box = $('toasts');
@@ -183,17 +237,23 @@ export class Hud {
     $('s-face').textContent = S.happiness > 0.8 ? '😊' : S.happiness > 0.5 ? '😐' : '😟';
     const cap = g.storageCap();
     for (const k of GOOD_IDS) {
-      const el = this.goodEls[k], v = Math.floor(S.stock[k]);
-      (el.lastElementChild as HTMLElement).textContent = String(v);
-      el.title = `${GOODS[k].name}: ${v} / ${cap}`;
+      const el = this.goodEls[k], v = Math.floor(S.stock[k]), r = g.rates[k], net = r.prod - r.cons;
+      (el.children[0] as HTMLElement).textContent = String(v);
+      const tr = el.children[1] as HTMLElement;
+      tr.textContent = net > 0.15 ? '▲' : net < -0.15 ? '▼' : '';
+      tr.style.color = net > 0 ? 'var(--good)' : 'var(--bad)';
+      el.title = `${GOODS[k].name}: ${v} / ${cap}\nProduced ${r.prod.toFixed(1)}/min · used ${r.cons.toFixed(1)}/min`;
       el.className = `stat${v === 0 ? ' zero' : ''}${v >= cap ? ' low' : ''}`;
     }
     document.querySelectorAll<HTMLElement>('.speed button').forEach((b) => b.classList.toggle('on', +b.dataset.n! === app.speed));
 
     // quest
     const q = QUESTS[S.quest];
-    this.set('quest', q ? `<h3>📜 ${q.title}</h3><p>${q.text}</p><small>Reward: 🪙 ${q.reward} · ${S.quest + 1}/${QUESTS.length}</small>`
-      : `<h3>🌅 Dawn Over All</h3><p>The island is yours, in both worlds. Keep building!</p>`);
+    const alerts = this.alerts();
+    this.alertTarget = alerts[0] ?? null;
+    const alertHtml = alerts.length ? `<div class="alerts" data-act="alert">${alerts.map((a) => `<div>⚠ ${a.text}</div>`).join('')}</div>` : '';
+    this.set('quest', (q ? `<h3>📜 ${q.title}</h3><p>${q.text}</p><small>Reward: 🪙 ${q.reward} · ${S.quest + 1}/${QUESTS.length}</small>`
+      : `<h3>🌅 Dawn Over All</h3><p>The island is yours, in both worlds. Keep building!</p>`) + alertHtml);
 
     // world button / alert
     const gate = g.gateEnt(), wb = $('worldBtn');
@@ -229,7 +289,9 @@ export class Hud {
       const cap = armyCap(g), n = armySize(g), sel = app.renderer.selected.size;
       const beacons = S.entities.filter((e) => e.kind === 'beacon').length;
       h += `<div class="col army"><div>⚔️ Army <b>${n}</b> / ${cap}</div><div class="muted">${sel ? `${sel} selected` : 'Drag to select'}</div>
-        <button data-act="selectAll">Select all <kbd>F</kbd></button></div><div class="items">`;
+        <button data-act="selectAll">Select all <kbd>F</kbd></button></div>
+        <div class="col"><button class="${app.charge ? 'on' : ''}" data-act="charge" title="Next order: march and fight everything on the way (or Shift + right-click)">⚔ Charge <kbd>C</kbd></button>
+        <button data-act="retreat" title="Selected soldiers fall back to the Rift Gate to heal">↩ Retreat <kbd>G</kbd></button></div><div class="items">`;
       h += this.trainButtons();
       h += `<button class="bbtn ${app.tool === 'beacon' ? 'on' : ''}" data-act="tool" data-t="beacon" data-tip="u:beacon" ${beacons >= MAX_BEACONS ? 'disabled' : ''}><span class="ic">🕯️</span><span class="nm">Beacon</span><span class="lock">${beacons}/${MAX_BEACONS}</span></button>`;
       h += `</div><div class="col army hint muted ${S.trainQ.length ? '' : 'idle'}">${S.trainQ.length ? `Training ${UNITS[S.trainQ[0]].name}…<div class="bar"><i style="width:${(1 - S.trainT / TRAIN_TIME) * 100}%"></i></div>${S.trainQ.length > 1 ? `+${S.trainQ.length - 1} queued` : ''}`
@@ -248,8 +310,9 @@ export class Hud {
 
   private renderPanel() {
     const g = this.g, S = g.state, p = this.panel, el = $('panel');
+    if (p.kind === 'ledger') { el.classList.remove('hidden'); this.set('panel', this.ledgerHtml()); return; }
     const b = p.kind === 'building' ? g.byId.get(p.id) : undefined;
-    if (!b) { this.panel = { kind: 'none' }; el.classList.add('hidden'); return; }
+    if (!b) { if (p.kind !== 'none') this.closePanel(); el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
     const d = BUILDINGS[b.type], [st, ok] = STATUS[b.status];
     let h = `<button class="x" data-act="close">✕</button>`;
@@ -265,6 +328,7 @@ export class Hud {
         h += `<p class="muted">Rises to <b>${nx.name}</b> when full and content${miss.length ? `, with a ${miss.map((m) => BUILDINGS[m].name).join(' & ')} nearby` : ''}${S.peakPop < (b.tier ? 80 : 40) ? ` (city needs ${b.tier ? 80 : 40} residents)` : ''}. Cost: ${this.cost(0, nx.upgrade)}</p>`;
         if ((b.upT ?? 0) > 0) h += `<div class="bar"><i style="width:${Math.min(100, (b.upT! / 15) * 100)}%"></i></div>`;
       }
+      h += `<p>🌷 Charm ${Math.round((b.beauty ?? 0) * 100)}% <span class="muted">· +${Math.round((b.beauty ?? 0) * BEAUTY_TAX * 100)}% tax. Gardens, statues and fountains nearby raise it.</span></p><div class="bar"><i style="width:${(b.beauty ?? 0) * 100}%"></i></div>`;
       h += `<div class="row"><button data-act="auto">${S.autoUpgrade ? '☑' : '☐'} Auto-upgrade homes</button></div>`;
     } else {
       h += `<h2>${d.icon} ${d.name}</h2><p class="${ok ? 'ok' : 'no'}">${ok ? '●' : '▲'} ${st}</p><p class="muted">${d.desc}</p>`;
@@ -272,7 +336,10 @@ export class Hud {
         h += `<p>${d.inputs ? this.io(d.inputs) + ' → ' : ''}${this.io(d.outputs)} every ${d.cycle}s</p><div class="bar"><i style="width:${Math.min(1, b.progress) * 100}%"></i></div>
           <p class="muted">Efficiency ${Math.round(S.workEff * b.resEff * 100)}%${d.needs === 'forest' ? ` · forest ${Math.round(b.resEff * 100)}%` : ''} · 👥 ${d.workers}</p>`;
       }
-      if (b.type === 'spire') h += `<p>Burns 1 🔮 every ${d.cycle}s</p><div class="bar"><i style="width:${((b.fuel ?? 0) / d.cycle!) * 100}%"></i></div>`;
+      if (b.type === 'spire') h += `<p>Burns 1 🔮 every ${d.cycle}s</p><div class="bar"><i style="width:${((b.fuel ?? 0) / d.cycle!) * 100}%"></i></div><p class="muted">🌙 In the Dark World it strikes foes within ${SPIRE_RANGE} tiles while lit.</p>`;
+      if (b.type === 'chapel') h += `<p class="muted">🌙 In the Dark World your soldiers heal within ${CHAPEL_RANGE} tiles of it.</p>`;
+      if (b.type === 'forester') h += `<p>Plants a tree every ${d.cycle}s on open grass in reach.</p><div class="bar"><i style="width:${Math.min(1, b.progress) * 100}%"></i></div>`;
+      if (d.beauty) h += `<p>🌷 Adds ${d.beauty} charm to homes nearby. Six charm gives a home the full +${BEAUTY_TAX * 100}% tax.</p>`;
       if (b.type === 'warehouse' || b.type === 'townhall') h += `<p>Storage limit: <b>${g.storageCap()}</b> per good</p>`;
       if (b.type === 'townhall') h += `<p class="muted">Peak population ${S.peakPop}. ${S.pop} residents fill ${S.jobs} jobs.</p>`;
       if (b.type === 'harbor') h += this.tradeHtml();
@@ -292,7 +359,13 @@ export class Hud {
 
   private tradeHtml() {
     const g = this.g, S = g.state;
-    let h = `<div class="tabs"><button class="${this.tradeTab === 'ships' ? 'on' : ''}" data-act="ttab" data-t="ships">Ships in port</button><button class="${this.tradeTab === 'orders' ? 'on' : ''}" data-act="ttab" data-t="orders">Standing orders</button></div>`;
+    let h = '';
+    S.contracts.forEach((c, i) => {
+      const m = MERCHANTS[c.merchant], why = canDeliver(g, c);
+      h += `<div class="ship contract"><b>📜 Contract · ${m.name}</b><br>Deliver ${c.qty} ${GOODS[c.good].icon} ${GOODS[c.good].name} <span class="muted">(have ${Math.floor(S.stock[c.good])})</span> for <b>🪙 ${c.reward}</b>
+        <div class="row"><span class="muted grow">${why ?? 'Ready to deliver'} · ${Math.ceil(c.t / 60)} min left</span><button data-act="deliver" data-i="${i}" ${why ? 'disabled' : ''}>Deliver</button></div></div>`;
+    });
+    h += `<div class="tabs"><button class="${this.tradeTab === 'ships' ? 'on' : ''}" data-act="ttab" data-t="ships">Ships in port</button><button class="${this.tradeTab === 'orders' ? 'on' : ''}" data-act="ttab" data-t="orders">Standing orders</button></div>`;
     if (this.tradeTab === 'orders') {
       h += `<p class="muted">Carried out automatically whenever a ship is docked.</p><table class="trade"><tr><th>Good</th><th>Have</th><th>Order</th><th>Keep</th></tr>`;
       for (const k of GOOD_IDS) {
@@ -328,6 +401,21 @@ export class Hud {
     return h;
   }
 
+  private ledgerHtml() {
+    const g = this.g, S = g.state, L = g.ledger, cap = g.storageCap();
+    const row = (label: string, v: number) => `<div class="row"><span class="grow">${label}</span><b class="${v >= 0 ? 'ok' : 'no'}">${v >= 0 ? '+' : ''}${Math.round(v)}</b></div>`;
+    let h = `<button class="x" data-act="close">✕</button><h2>📒 Ledger</h2><p class="muted">Gold per minute</p>
+      ${row('Taxes', L.taxes)}${row('Building upkeep', -L.buildings)}${row('Army upkeep', -L.army)}<div class="row" style="border-top:1px solid var(--line);padding-top:3px"><span class="grow"><b>Balance</b></span><b class="${S.income >= 0 ? 'ok' : 'no'}">${S.income >= 0 ? '+' : ''}${Math.round(S.income)}</b></div>
+      <p class="muted" style="margin-top:10px">Goods per minute · storage ${cap} each</p><table class="trade"><tr><th>Good</th><th>Stock</th><th>Made</th><th>Used</th><th>Net</th></tr>`;
+    for (const k of GOOD_IDS) {
+      const r = g.rates[k], net = r.prod - r.cons;
+      if (!r.prod && !r.cons && S.stock[k] < 1) continue;
+      h += `<tr><td>${GOODS[k].icon} ${GOODS[k].name}</td><td>${Math.floor(S.stock[k])}</td><td>${r.prod ? r.prod.toFixed(1) : '—'}</td><td>${r.cons ? r.cons.toFixed(1) : '—'}</td><td class="${net >= 0 ? 'ok' : 'no'}">${net >= 0 ? '+' : ''}${net.toFixed(1)}</td></tr>`;
+    }
+    h += `</table><p class="muted" style="margin-top:8px">👥 ${S.pop} residents for ${S.jobs} jobs · workforce ${Math.round(S.workEff * 100)}%</p>`;
+    return h;
+  }
+
   // ---------- minimap ----------
   private minimap() {
     const g = this.g, W = g.world, app = this.app;
@@ -360,6 +448,7 @@ export class Hud {
       x.fillStyle = c.alive ? `#${CAMPS[i].color.toString(16).padStart(6, '0')}` : '#ffe9a8'; x.fill();
       x.strokeStyle = '#000'; x.lineWidth = 1; x.stroke();
     });
+    if (app.dark) for (const n of g.state.nodes) if (n.ready) { x.fillStyle = '#ff7ad9'; x.fillRect(n.x * k - 2, n.z * k - 2, 4, 4); }
     if (app.dark || g.state.entities.some((e) => e.raid)) {
       for (const e of g.state.entities) {
         if (e.kind === 'camp' || e.kind === 'gate') continue;

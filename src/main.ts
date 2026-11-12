@@ -1,13 +1,13 @@
 import './ui/style.css';
-import { BUILDINGS, BuildingId, CAMPS, UNITS } from './sim/defs';
+import { BUILDINGS, BuildingId, CAMPS, DIFFICULTY, GOODS, ROAD_COST, UNITS } from './sim/defs';
 import { Game } from './sim/game';
-import { canPlaceBeacon, orderAttack, orderMove, placeBeacon } from './sim/combat';
+import { canPlaceBeacon, orderAttack, orderAttackMove, orderMove, placeBeacon } from './sim/combat';
 import { N } from './sim/world';
 import { PreviewKind, Renderer } from './render/renderer';
 import { Sound } from './ui/audio';
 import { App, Hud } from './ui/hud';
 
-const SAVE_KEY = 'dal-save-v3';
+const SAVE_KEY = 'dal-save-v4';
 const canvas = document.getElementById('c') as HTMLCanvasElement;
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -15,14 +15,16 @@ const renderer = new Renderer(canvas);
 const sound = new Sound();
 let started = false;
 let switching = false;
+let difficulty = 1;
+const newSeed = () => (Math.random() * 1e9) | 0;
 
 const app: App = {
-  game: Game.create((Math.random() * 1e9) | 0),
-  renderer, sound, dark: false, tool: null, speed: 1,
+  game: Game.create(newSeed()),
+  renderer, sound, dark: false, tool: null, speed: 1, charge: false,
   setTool(t) {
     if (t && t !== 'road' && t !== 'demolish' && t !== 'beacon' && !app.game.unlocked(t)) return;
     app.tool = t; renderer.setPreview(t);
-    if (t) hud.closePanel();
+    if (t) hud.closePanel(); else hud.hint('');
     canvas.style.cursor = t ? 'crosshair' : '';
   },
   toggleWorld() {
@@ -36,7 +38,9 @@ const app: App = {
       app.dark = to; app.setTool(null);
       document.body.classList.toggle('dark', to);
       renderer.setDark(to);
+      app.charge = false;
       if (to) {
+        if (!app.game.state.stats.visitedDark) hud.toast('Pink shard crystals glow across the dark island. Stand soldiers beside one to harvest it.', 'info');
         app.game.state.stats.visitedDark = true;
         const g = app.game.gateEnt()!; renderer.focus(g.x, g.z);
       }
@@ -50,7 +54,13 @@ const app: App = {
     renderer.selected.clear();
     for (const e of app.game.state.entities) if (e.team === 0 && UNITS[e.kind].speed > 0) renderer.selected.add(e.id);
   },
-  newGame() { startGame(Game.create((Math.random() * 1e9) | 0)); },
+  newGame() { startGame(Game.create(newSeed(), app.game.state.difficulty)); },
+  retreat() {
+    const g = app.game.gateEnt(), ids = [...renderer.selected];
+    if (!g || !ids.length) return;
+    orderMove(app.game, ids, g.x + 2.2, g.z + 2.2);
+    renderer.moveMarker(g.x + 2.2, g.z + 2.2, false); sound.order();
+  },
 };
 const hud = new Hud(app);
 renderer.setGame(app.game);
@@ -71,7 +81,16 @@ function save() { try { localStorage.setItem(SAVE_KEY, app.game.serialize()); } 
 
 const saved = localStorage.getItem(SAVE_KEY);
 if (saved) $('btnContinue').classList.remove('hidden');
-$('btnNew').addEventListener('click', () => startGame(app.game));
+$('btnNew').addEventListener('click', () => startGame(difficulty === 1 ? app.game : Game.create(app.game.state.seed, difficulty)));
+const diffBox = $('difficulty');
+diffBox.innerHTML = DIFFICULTY.map((d, i) => `<button data-d="${i}" class="${i === 1 ? 'on' : ''}" title="${d.desc}">${d.name}</button>`).join('');
+diffBox.addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest('button');
+  if (!b) return;
+  difficulty = +b.dataset.d!;
+  diffBox.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  $('diffDesc').textContent = DIFFICULTY[difficulty].desc;
+});
 $('btnContinue').addEventListener('click', () => {
   const g = saved ? Game.load(saved) : null;
   if (g) startGame(g); else { hud.toast('The saved game could not be read. Starting a new island.', 'warn'); startGame(app.game); }
@@ -214,6 +233,8 @@ function command(cx: number, cy: number) {
   const ids = [...renderer.selected];
   if (!ids.length) return;
   const enemy = renderer.entityAt(cx, cy, 1);
+  const charge = app.charge || keys.has('shift');
+  app.charge = false;
   if (enemy) {
     orderAttack(app.game, ids, enemy);
     const e = app.game.entById.get(enemy)!;
@@ -221,8 +242,8 @@ function command(cx: number, cy: number) {
   } else {
     const p = renderer.screenToGround(cx, cy);
     if (!p) return;
-    orderMove(app.game, ids, p.x, p.z);
-    renderer.moveMarker(p.x, p.z, false);
+    if (charge) orderAttackMove(app.game, ids, p.x, p.z); else orderMove(app.game, ids, p.x, p.z);
+    renderer.moveMarker(p.x, p.z, charge);
   }
   sound.order();
 }
@@ -246,6 +267,9 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'r' && !app.dark) app.setTool(app.tool === 'road' ? null : 'road');
   else if (k === 'x' && !app.dark) app.setTool(app.tool === 'demolish' ? null : 'demolish');
   else if (k === 'f' && app.dark) app.selectAll();
+  else if (k === 'c' && app.dark) app.charge = !app.charge;
+  else if (k === 'g' && app.dark) app.retreat();
+  else if (k === 'l') document.querySelector<HTMLElement>('[data-act="ledger"]')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
   else if (k === 'h') { const s = app.game.world.start; renderer.focus(s.x, s.z); }
 });
 window.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()));
@@ -288,7 +312,19 @@ function loop(now: number) {
         const ok = t === 'road' ? !g.tileFree(h.tx, h.tz) : t === 'demolish' ? true : t === 'beacon' ? !canPlaceBeacon(g, h.x, h.z)
           : g.canPlace(t as BuildingId, h.tx, h.tz).ok && g.canAfford(BUILDINGS[t as BuildingId].gold, BUILDINGS[t as BuildingId].cost);
         renderer.updatePreview(h.tx, h.tz, ok);
-      }
+        // tell the player why (or how well) this spot works
+        let text = '';
+        if (t === 'road') text = ok ? `Road · ${ROAD_COST} gold per tile` : g.tileFree(h.tx, h.tz) ?? '';
+        else if (t === 'beacon') text = canPlaceBeacon(g, h.x, h.z) ?? 'Light Beacon';
+        else if (t !== 'demolish') {
+          const d = BUILDINGS[t as BuildingId], c = g.canPlace(d.id, h.tx, h.tz);
+          if (!c.ok) text = c.reason!;
+          else if (!g.canAfford(d.gold, d.cost)) text = 'Not enough ' + (g.state.gold < d.gold ? 'gold' : Object.keys(d.cost).filter((k) => g.state.stock[k as keyof typeof GOODS] < d.cost[k as keyof typeof GOODS]!).map((k) => GOODS[k as keyof typeof GOODS].name.toLowerCase()).join(', '));
+          else if (d.needs === 'forest') text = `Forest in reach: ${Math.round(g.resEfficiency(d.id, h.tx, h.tz) * 100)}%`;
+          else if (d.beauty) text = `+${d.beauty} charm to homes nearby`;
+        }
+        hud.hint(text, mouse.x, mouse.y, ok);
+      } else hud.hint('');
     }
     saveT += dt;
     if (saveT > 20) { saveT = 0; save(); }
@@ -305,6 +341,19 @@ function handleEvents() {
     renderer.onEvent(ev);
     switch (ev.t) {
       case 'toast': hud.toast(ev.msg, ev.kind); break;
+      case 'prod': {
+        if (app.dark) break;
+        const b = app.game.byId.get(ev.id);
+        const p = b && renderer.toScreen(b.x + BUILDINGS[b.type].size / 2, b.z + BUILDINGS[b.type].size / 2, 1.6);
+        if (p) hud.popup(p.x, p.y, `+${ev.n} ${GOODS[ev.good].icon}`);
+        break;
+      }
+      case 'harvest': case 'loot': {
+        if (ev.t === 'harvest') sound.coin();
+        const p = app.dark && renderer.toScreen(ev.x, ev.z, 1.4);
+        if (p) hud.popup(p.x, p.y, `+${ev.n} 🔮`, 'shard');
+        break;
+      }
       case 'quest': hud.toast(`📜 ${ev.msg}`, 'quest'); sound.quest(); break;
       case 'hit': if (app.dark) sound.hit(); break;
       case 'shot': if (app.dark) sound.shot(); break;

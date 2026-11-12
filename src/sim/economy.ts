@@ -1,11 +1,12 @@
-import { BUILDINGS, Good, TIERS, UNITS } from './defs';
+import { BEAUTY_TAX, BUILDINGS, GOOD_IDS, Good, TIERS, UNITS } from './defs';
 import type { Game } from './game';
 
 const approach = (v: number, target: number, rate: number) =>
   v < target ? Math.min(target, v + rate) : Math.max(target, v - rate);
 
 export function tickEconomy(g: Game, dt: number) {
-  const S = g.state, stock = S.stock, cap = g.storageCap();
+  const S = g.state, stock = S.stock, cap = g.storageCap(), rates = g.rates;
+  for (const k of GOOD_IDS) { rates[k].prod = 0; rates[k].cons = 0; }
 
   // --- workforce ---
   let jobs = 0;
@@ -29,9 +30,10 @@ export function tickEconomy(g: Game, dt: number) {
       if (b.connected && b.fuel <= 0 && stock.shards >= 1) { stock.shards -= 1; b.fuel = d.cycle!; }
       b.status = !b.connected ? 'noRoad' : b.fuel > 0 ? 'ok' : 'noInput';
       if (was !== b.fuel > 0) coverageDirty = true;
+      if (b.fuel > 0) rates.shards.cons += 60 / d.cycle!;
       continue;
     }
-    if (!d.cycle) { b.status = b.connected ? 'ok' : 'noRoad'; continue; }
+    if (!d.cycle) { b.status = b.connected || d.category === 'decor' ? 'ok' : 'noRoad'; continue; }
     if (!b.connected) { b.status = 'noRoad'; continue; }
     if (b.paused) { b.status = 'paused'; continue; }
     if (b.resEff <= 0) { b.status = 'noResource'; continue; }
@@ -45,9 +47,18 @@ export function tickEconomy(g: Game, dt: number) {
       if (ok) for (const k in d.outputs) if (stock[k as Good] >= cap) { ok = false; b.status = 'full'; }
       if (ok) {
         for (const k in d.inputs) stock[k as Good] -= d.inputs[k as Good]!;
-        for (const k in d.outputs) stock[k as Good] = Math.min(cap, stock[k as Good] + d.outputs[k as Good]!);
+        for (const k in d.outputs) {
+          stock[k as Good] = Math.min(cap, stock[k as Good] + d.outputs[k as Good]!);
+          g.events.push({ t: 'prod', id: b.id, good: k as Good, n: d.outputs[k as Good]! });
+        }
+        if (b.type === 'forester') g.plantNear(b);
         b.progress -= 1;
       } else b.progress = 1;
+    }
+    if (b.status === 'ok' || b.status === 'noWorkers') {
+      const perMin = (60 / d.cycle) * workEff * b.resEff;
+      for (const k in d.inputs) rates[k as Good].cons += perMin * d.inputs[k as Good]!;
+      for (const k in d.outputs) rates[k as Good].prod += perMin * d.outputs[k as Good]!;
     }
   }
   if (coverageDirty) g.recomputeCoverage();
@@ -61,6 +72,7 @@ export function tickEconomy(g: Game, dt: number) {
   }
   for (const k of ['fish', 'bread', 'cloth'] as Good[]) {
     const dmd = demand[k] ?? 0;
+    rates[k].cons += (dmd / dt) * 60;
     const have = dmd === 0 || stock[k] >= dmd;
     if (stock[k] >= dmd) stock[k] -= dmd; else stock[k] = 0;
     S.needSat[k] = approach(S.needSat[k] ?? 1, have ? 1 : 0, dt / 25);
@@ -80,7 +92,7 @@ export function tickEconomy(g: Game, dt: number) {
     b.residents = approach(b.residents!, target, dt * 0.45);
     const r = Math.floor(b.residents);
     pop += r; houses++; satSum += sat;
-    taxes += r * tier.tax * (0.55 + 0.45 * sat);
+    taxes += r * tier.tax * (0.55 + 0.45 * sat) * (1 + BEAUTY_TAX * (b.beauty ?? 0));
     b.status = b.connected ? 'ok' : 'noRoad';
 
     // upgrade
@@ -101,8 +113,10 @@ export function tickEconomy(g: Game, dt: number) {
   if (pop > S.peakPop) S.peakPop = pop;
   S.happiness = houses ? satSum / houses : 1;
 
-  for (const e of S.entities) if (e.team === 0) upkeep += UNITS[e.kind].upkeep ?? 0;
-  S.income = taxes - upkeep;
+  let army = 0;
+  for (const e of S.entities) if (e.team === 0) army += UNITS[e.kind].upkeep ?? 0;
+  g.ledger.taxes = taxes; g.ledger.buildings = upkeep; g.ledger.army = army;
+  S.income = taxes - upkeep - army;
   S.gold += (S.income * dt) / 60;
   if (S.gold < -300) S.gold = -300;
 }

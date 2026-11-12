@@ -13,6 +13,21 @@ export function los(w: World, ax: number, az: number, bx: number, bz: number) {
   return true;
 }
 
+/** Nearest walkable point to (x,z); the point itself if already walkable. */
+export function nearestWalk(w: World, x: number, z: number): { x: number; z: number } {
+  const gx = Math.floor(x), gz = Math.floor(z);
+  if (w.isWalk(gx, gz)) return { x, z };
+  let best = Infinity, fx = gx, fz = gz;
+  for (let r = 1; r <= 12 && best === Infinity; r++) {
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (!w.isWalk(gx + dx, gz + dz)) continue;
+      const d = dx * dx + dz * dz;
+      if (d < best) { best = d; fx = gx + dx; fz = gz + dz; }
+    }
+  }
+  return { x: fx + 0.5, z: fz + 0.5 };
+}
+
 /** A* over walkable tiles. Returns flat [x,z,...] world waypoints (smoothed), or null. */
 export function findPath(w: World, sx: number, sz: number, tx: number, tz: number): number[] | null {
   const s0x = Math.floor(sx), s0z = Math.floor(sz);

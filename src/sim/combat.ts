@@ -1,6 +1,6 @@
-import { ARMY_PER_BARRACKS, CAMPS, MAX_BEACONS, TRAIN_TIME, UNITS, UnitKind } from './defs';
+import { ARMY_PER_BARRACKS, CAMPS, CHAPEL_HEAL, CHAPEL_RANGE, MAX_BEACONS, SPIRE_DMG, SPIRE_RANGE, TRAIN_TIME, UNITS, UnitKind } from './defs';
 import type { Game } from './game';
-import { findPath, los } from './path';
+import { findPath, los, nearestWalk } from './path';
 import { Entity, ORDER } from './state';
 
 const isStatic = (e: Entity) => UNITS[e.kind].speed === 0;
@@ -55,6 +55,7 @@ export function placeBeacon(g: Game, x: number, z: number): string | null {
 
 export function orderMove(g: Game, ids: number[], x: number, z: number) {
   const units = ids.map((id) => g.entById.get(id)).filter((e): e is Entity => !!e && e.team === 0 && !isStatic(e));
+  ({ x, z } = nearestWalk(g.world, x, z)); // clicks on water or rock go to the nearest shore
   const cols = Math.ceil(Math.sqrt(units.length));
   units.forEach((e, i) => {
     const ox = ((i % cols) - (cols - 1) / 2) * 0.8, oz = (Math.floor(i / cols) - (cols - 1) / 2) * 0.8;
@@ -62,6 +63,11 @@ export function orderMove(g: Game, ids: number[], x: number, z: number) {
     if (!g.world.isWalk(Math.floor(tx), Math.floor(tz))) { tx = x; tz = z; }
     e.order = ORDER.Move; e.ox = tx; e.oz = tz; e.tgt = 0; e.path = null;
   });
+}
+/** March to a spot, fighting anything met on the way. */
+export function orderAttackMove(g: Game, ids: number[], x: number, z: number) {
+  orderMove(g, ids, x, z);
+  for (const id of ids) { const e = g.entById.get(id); if (e && e.order === ORDER.Move) e.order = ORDER.AttackMove; }
 }
 export function orderAttack(g: Game, ids: number[], targetId: number) {
   for (const id of ids) {
@@ -150,7 +156,7 @@ function spawnRaid(g: Game) {
   const ci = S.raidCount < 3 ? live[0] : live[Math.floor(g.rand() * live.length)];
   const cd = CAMPS[ci], site = g.world.campSites[ci];
   // raids grow with time, but their ceiling follows how far the war has come
-  const n = Math.min(3 + Math.floor(S.raidCount * 0.5), 6 + 2 * (S.camps.length - live.length));
+  const n = Math.min(3 + Math.floor(S.raidCount * 0.5), 6 + 2 * (S.camps.length - live.length)) + (S.difficulty >= 2 ? 2 : 0);
   for (let i = 0; i < n; i++) {
     const e = g.spawnNear(cd.raid[i % cd.raid.length], 1, site.x + 0.5 + (g.rand() - 0.5) * 4, site.z + 2.5 + g.rand() * 2, ci);
     e.raid = true; e.order = ORDER.AttackMove; e.ox = gate.x; e.oz = gate.z;
@@ -176,7 +182,7 @@ function onDeath(g: Game, e: Entity) {
     return;
   }
   const loot = e.kind === 'ghoul' ? (g.rand() < 0.35 ? 1 : 0) : e.kind === 'spitter' ? (g.rand() < 0.5 ? 1 : 0) : e.kind === 'brute' ? 2 : 6;
-  if (loot) g.addGood('shards', loot);
+  if (loot) { g.addGood('shards', loot); g.events.push({ t: 'loot', x: e.x, z: e.z, n: loot }); }
   S.gold += 4 + Math.floor(g.rand() * 8);
 }
 
@@ -208,9 +214,44 @@ export function tickCombat(g: Game, dt: number) {
         if (e.team === 0 && e !== gate && Math.hypot(e.x - gate.x, e.z - gate.z) < 6) e.hp = Math.min(UNITS[e.kind].hp, e.hp + 3 * dt);
       }
     }
-    if (S.camps.some((c) => c.alive)) {
+    if (S.difficulty > 0 && S.camps.some((c) => c.alive)) {
       S.raidTimer -= dt;
-      if (S.raidTimer <= 0) { spawnRaid(g); S.raidTimer = 165 + g.rand() * 40; }
+      if (S.raidTimer <= 0) { spawnRaid(g); S.raidTimer = (165 + g.rand() * 40) * (S.difficulty >= 2 ? 0.72 : 1); }
+    }
+  }
+
+  // --- the city's light reaches across the Rift: spires strike, chapels heal ---
+  for (const b of S.buildings) {
+    if (!b.connected) continue;
+    if (b.type === 'chapel') {
+      const c = g.center(b);
+      for (const e of ents) if (e.team === 0 && e.hp > 0 && !e.down && Math.hypot(e.x - c.x, e.z - c.z) < CHAPEL_RANGE) e.hp = Math.min(UNITS[e.kind].hp, e.hp + CHAPEL_HEAL * dt);
+    } else if (b.type === 'spire' && (b.fuel ?? 0) > 0) {
+      const cd = (g.spireCd.get(b.id) ?? 0) - dt;
+      g.spireCd.set(b.id, cd);
+      if (cd > 0) continue;
+      const c = g.center(b);
+      let best: Entity | undefined, bd = SPIRE_RANGE;
+      for (const e of ents) { if (e.team !== 1 || e.hp <= 0) continue; const d = Math.hypot(e.x - c.x, e.z - c.z); if (d < bd) { bd = d; best = e; } }
+      if (best) {
+        g.spireCd.set(b.id, 1.1);
+        S.projectiles.push({ id: S.nextId++, x: c.x, z: c.z, y: 3.7, tgt: best.id, dmg: SPIRE_DMG, team: 0, from: 0 });
+        g.events.push({ t: 'shot', x: c.x, z: c.z, team: 0 });
+      } else g.spireCd.set(b.id, 0.3);
+    }
+  }
+
+  // --- shard crystals: soldiers standing beside one harvest it ---
+  for (const n of S.nodes) {
+    if (!n.ready) { n.t -= dt; if (n.t <= 0) { n.ready = true; n.prog = 0; } continue; }
+    let near = false;
+    for (const e of ents) if (e.team === 0 && UNITS[e.kind].speed > 0 && Math.hypot(e.x - n.x, e.z - n.z) < 1.6) { near = true; break; }
+    n.prog = near ? n.prog + dt : Math.max(0, n.prog - dt);
+    if (n.prog >= 4) {
+      const amount = 3 + Math.floor(g.rand() * 3);
+      n.ready = false; n.t = 300; n.prog = 0;
+      g.addGood('shards', amount); S.stats.harvested += amount;
+      g.events.push({ t: 'harvest', x: n.x, z: n.z, n: amount });
     }
   }
 
@@ -258,7 +299,7 @@ export function tickCombat(g: Game, dt: number) {
       } else if (d.speed > 0) stepToward(g, e, t.x, t.z, dt);
     } else if (d.speed > 0) {
       if (e.order === ORDER.Move || e.order === ORDER.AttackMove) {
-        if (Math.hypot(e.ox - e.x, e.oz - e.z) < 0.5) { if (e.order === ORDER.Move) e.order = ORDER.Idle; e.path = null; }
+        if (Math.hypot(e.ox - e.x, e.oz - e.z) < 0.5) { if (e.order === ORDER.Move || e.team === 0) e.order = ORDER.Idle; e.path = null; }
         else stepToward(g, e, e.ox, e.oz, dt);
       } else if (e.team === 1 && e.camp >= 0 && !e.raid && Math.hypot(e.hx - e.x, e.hz - e.z) > 1.5) {
         stepToward(g, e, e.hx, e.hz, dt);

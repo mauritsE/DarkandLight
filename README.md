@@ -26,13 +26,18 @@ Then open the printed URL. `npm run build` makes a static bundle in `dist/`, `np
 - Everything must connect by **road** to your Keep. Houses bring residents, who pay taxes and staff your buildings.
 - Residents have needs: fish and a market first; bread, cloth and a chapel for **Burghers**; a Lumen Spire for **Luminaries**. Content, full homes upgrade on their own and pay more tax.
 - Production chains: woodcutter → sawmill, farm → bakery, sheep farm → weaver, iron mine + wood → forge (weapons).
-- Build a **Harbor** and three merchant houses will visit. Click the harbor to sell and buy, or set standing orders ("sell above 40") that run whenever a ship is docked.
+- Build a **Harbor** and three merchant houses will visit. Click the harbor to sell and buy, or set standing orders ("sell above 40") that run whenever a ship is docked. Merchants also offer timed **contracts** that pay well above market price.
+- A **Forester** replants trees so woodcutters never run dry. **Gardens, statues and fountains** give nearby homes charm, which raises their taxes by up to 20%.
+- Click the gold counter (or press <kbd>L</kbd>) for the **ledger**: income breakdown and what every good is produced and used at per minute. The quest card lists the city's most pressing problems; click it to jump there.
 
 **Dark World — fight**
 
 - Raise the **Rift Gate**, then press <kbd>Tab</kbd> (or the round button) to cross over. Your city appears as a ghost; only the gate is solid in both worlds.
 - Train soldiers at a **Barracks** (each supports 6). They appear at the gate. Drag to select, right-click to move or attack.
 - Strongholds send **raids** against your gate. If it is breached, raiders plunder your treasury. Light Beacons and a garrison keep it safe.
+- Your city reaches across the Rift: a lit **Lumen Spire** strikes dark creatures near it, and soldiers heal near a **Chapel**. Where you build matters for defence.
+- **Shard crystals** glow pink across the dark island. Stand soldiers beside one to harvest it; they regrow after a few minutes.
+- <kbd>C</kbd> (or Shift + right-click) orders a **charge**: march and fight everything on the way. <kbd>G</kbd> sends the selection back to the gate to heal.
 - Destroying a stronghold lifts its blight from the Light World and yields **Umbral Shards**, which power Lumen Spires and Dawnblade champions. Raze all three to win.
 
 ## Controls
@@ -44,9 +49,12 @@ Then open the printed URL. `npm run build` makes a static bundle in `dist/`, `np
 | Switch world | <kbd>Tab</kbd> or <kbd>Space</kbd> |
 | Road / demolish tool | <kbd>R</kbd> / <kbd>X</kbd> |
 | Cancel, deselect | <kbd>Esc</kbd> or right-click |
-| Select all soldiers | <kbd>F</kbd> (Dark World) |
+| Select all / charge / retreat | <kbd>F</kbd> / <kbd>C</kbd> / <kbd>G</kbd> (Dark World) |
+| Ledger | <kbd>L</kbd> |
 | Game speed | <kbd>P</kbd> pause, <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> |
 | Back to the Keep | <kbd>H</kbd> |
+
+The title screen offers three difficulties: **Peaceful** (no raids — a pure builder), **Standard** and **Relentless**.
 
 The game autosaves to the browser every 20 seconds.
 

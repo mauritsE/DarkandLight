@@ -5,11 +5,11 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Game } from '../sim/game';
-import { BUILDINGS, BuildingId, CAMPS, MERCHANTS, UNITS, UnitKind } from '../sim/defs';
+import { BUILDINGS, BuildingId, CAMPS, CHAPEL_RANGE, MERCHANTS, SPIRE_RANGE, UNITS, UnitKind } from '../sim/defs';
 import type { Building, Entity, GameEvent } from '../sim/state';
 import { N, T } from '../sim/world';
 import { S, setGhost } from './materials';
-import { CHIMNEY, buildingModel, campModel, scarModel, shipModel, unitModel, wellModel } from './models';
+import { CHIMNEY, buildingModel, campModel, nodeModel, scarModel, shipModel, unitModel, wellModel } from './models';
 import { Particles } from './particles';
 import { Terrain } from './terrain';
 
@@ -60,6 +60,9 @@ export class Renderer {
   private scars: (THREE.Group | null)[] = [];
   private wells: (THREE.Group | null)[] = [];
   private walkers: Walker[] = [];
+  private nodes: THREE.Group[] = [];
+  private birds: THREE.InstancedMesh;
+  private rangeRing: THREE.Mesh;
   private walkerMesh: THREE.InstancedMesh;
   private warnMat = new THREE.SpriteMaterial({ map: warnTexture(), depthTest: false });
   private barMat = { bg: new THREE.SpriteMaterial({ color: 0x1a1020, depthTest: false }), good: new THREE.SpriteMaterial({ color: 0x46b85a, depthTest: false }), bad: new THREE.SpriteMaterial({ color: 0xc8303e, depthTest: false }) };
@@ -117,6 +120,17 @@ export class Renderer {
     for (let i = 0; i < 44; i++) this.walkerMesh.setColorAt(i, wc.setHex(pal[i % pal.length]));
     this.lightGroup.add(this.walkerMesh);
 
+    // gulls wheeling over the island
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.12, -0.5, 0.1, -0.1, 0, 0, -0.08, 0, 0, 0.12, 0, 0, -0.08, 0.5, 0.1, -0.1], 3));
+    bg.computeVertexNormals();
+    this.birds = new THREE.InstancedMesh(bg, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }), 16);
+    this.birds.frustumCulled = false;
+    this.lightGroup.add(this.birds);
+    this.rangeRing = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 72).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.85, depthTest: false }));
+    this.rangeRing.visible = false; this.rangeRing.renderOrder = 5;
+    this.world.add(this.rangeRing);
+
     // placement preview
     this.previewPad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x6dff8a, transparent: true, opacity: 0.45, depthTest: false }));
     this.previewRing = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false }));
@@ -130,7 +144,9 @@ export class Renderer {
     if (this.terrain) { this.world.remove(this.terrain.group); }
     for (const v of this.bMap.values()) this.buildGroup.remove(v.g);
     for (const v of this.uMap.values()) this.darkGroup.remove(v.g);
-    for (const s of [...this.scars, ...this.wells, ...this.ships]) s?.removeFromParent();
+    for (const s of [...this.scars, ...this.wells, ...this.ships, ...this.nodes]) s?.removeFromParent();
+    this.nodes = game.state.nodes.map((n) => { const m = nodeModel(); m.position.set(n.x, Math.max(0, game.world.heightAt(n.x, n.z)), n.z); m.rotation.y = n.x * 7; this.darkGroup.add(m); return m; });
+    this.rangeRing.visible = false;
     this.bMap.clear(); this.uMap.clear(); this.scars = []; this.wells = []; this.ships = []; this.walkers = [];
     this.selected.clear();
     this.terrain = new Terrain(game);
@@ -170,6 +186,17 @@ export class Renderer {
   }
 
   focus(x: number, z: number) { this.cam.tx = x; this.cam.tz = z; }
+  /** Show (or hide with r = 0) a radius ring on the ground, e.g. a selected building's reach. */
+  setRange(x: number, z: number, r: number) {
+    this.rangeRing.visible = r > 0;
+    this.rangeRing.position.set(x, this.game ? this.hAt(x, z) + 0.12 : 0, z);
+    this.rangeRing.scale.set(r, 1, r);
+  }
+  /** Screen position of a world point, or null when behind the camera / off screen. */
+  toScreen(x: number, z: number, lift = 1): { x: number; y: number } | null {
+    const p = this.project(x, this.hAt(x, z) + lift, z);
+    return p.ok && p.x > 0 && p.y > 40 && p.x < window.innerWidth && p.y < window.innerHeight ? p : null;
+  }
 
   // ---------- picking ----------
   private setRay(cx: number, cy: number) {
@@ -257,6 +284,7 @@ export class Renderer {
         if (b) { const c = this.game.center(b); P.burst(c.x, this.hAt(c.x, c.z) + 0.8, c.z, 0xffe9a8, 30, 2, 0.18, 1.0, this.dark ? 2 : 1.3, 1); }
         break;
       }
+      case 'harvest': P.burst(ev.x, this.hAt(ev.x, ev.z) + 0.8, ev.z, 0xff7ad9, 40, 2.6, 0.2, 1.1, 2.4, 2); break;
       case 'breach': { const g = this.game.gateEnt(); if (g) P.burst(g.x, 1.5, g.z, 0xb060ff, 90, 5, 0.3, 1.4, 2.4, 2); break; }
       default: break;
     }
@@ -319,6 +347,15 @@ export class Renderer {
       if (ch && !this.dark && b.status === 'ok' && Math.random() < 0.06) {
         v3.set(ch[0], ch[1], ch[2]).applyAxisAngle(THREE.Object3D.DEFAULT_UP, v.g.rotation.y);
         this.particles.emit(v.g.position.x + v3.x, v.g.position.y + v3.y, v.g.position.z + v3.z, 0.15 + Math.random() * 0.1, 0.5, 0.05, 0xe8e4dc, 0.25, 2.6, { grow: 0.25, alpha: 0.5 });
+      }
+      if (this.dark && b.connected && b.type === 'chapel' && Math.random() < 0.35) {
+        // sanctuary aura: a ring of rising light where soldiers are healed
+        const a = Math.random() * 6.28, r = CHAPEL_RANGE * (0.55 + Math.random() * 0.45);
+        this.particles.emit(v.g.position.x + Math.cos(a) * r, v.g.position.y + 0.1, v.g.position.z + Math.sin(a) * r, 0, 0.7, 0, 0x9dffb0, 0.1, 1.5, { bright: 1.8 });
+      }
+      if (this.dark && b.type === 'spire' && (b.fuel ?? 0) > 0 && Math.random() < 0.2) {
+        const a = Math.random() * 6.28;
+        this.particles.emit(v.g.position.x + Math.cos(a) * SPIRE_RANGE, v.g.position.y + 0.1, v.g.position.z + Math.sin(a) * SPIRE_RANGE, 0, 0.5, 0, 0xffd27a, 0.1, 1.2, { bright: 2 });
       }
       if (b.type === 'spire' && (b.fuel ?? 0) > 0 && Math.random() < 0.1) {
         this.particles.emit(v.g.position.x + (Math.random() - 0.5) * 0.5, v.g.position.y + 3.6, v.g.position.z + (Math.random() - 0.5) * 0.5, 0, 0.6, 0, 0xffe9a8, 0.12, 1.4, { bright: 2 });
@@ -400,6 +437,18 @@ export class Renderer {
       if (this.dark && Math.random() < 0.5) this.particles.emit(m.position.x, m.position.y, m.position.z, 0, 0, 0, p.team ? 0x8dff6a : 0xffd27a, 0.1, 0.25, { bright: 2 });
     }
     for (const [id, m] of this.pMap) if (!seen.has(id)) { this.darkGroup.remove(m); this.pMap.delete(id); }
+    // shard crystals
+    S0.nodes.forEach((n, i) => {
+      const m = this.nodes[i];
+      if (!m) return;
+      const target = n.ready ? 1 : 0.18;
+      m.scale.setScalar(m.scale.x + (target - m.scale.x) * Math.min(1, dt * 3));
+      m.rotation.y += dt * (n.prog > 0 ? 2.5 : 0.15);
+      if (this.dark && n.ready && Math.random() < (n.prog > 0 ? 0.9 : 0.12)) {
+        const a = Math.random() * 6.28, r = n.prog > 0 ? 1.4 : 0.5;
+        this.particles.emit(n.x + Math.cos(a) * r, m.position.y + 0.3 + Math.random(), n.z + Math.sin(a) * r, n.prog > 0 ? -Math.cos(a) * 1.4 : 0, 0.6, n.prog > 0 ? -Math.sin(a) * 1.4 : 0, 0xff7ad9, 0.1, 1.0, { bright: 2.2 });
+      }
+    });
     // strongholds → scars in the light world, purified wells once destroyed
     S0.camps.forEach((cs, ci) => {
       const site = g.world.campSites[ci], y = this.hAt(site.x + 0.5, site.z + 0.5);
@@ -461,6 +510,18 @@ export class Renderer {
     });
     this.walkerMesh.count = this.walkers.length;
     this.walkerMesh.instanceMatrix.needsUpdate = true;
+    // gulls: slow circles around the keep and the coast, wings flapping
+    const st = g.world.start;
+    for (let i = 0; i < 16; i++) {
+      const rad = 9 + (i % 5) * 4.5, sp = (0.12 + (i % 3) * 0.03) * (i % 2 ? 1 : -1), a = this.time * sp + i * 1.7;
+      const cx = st.x + Math.sin(i * 2.3) * 14, cz = st.z + Math.cos(i * 1.9) * 14;
+      p.set(cx + Math.cos(a) * rad, 7 + (i % 4) * 1.2 + Math.sin(this.time * 0.5 + i) * 0.5, cz + Math.sin(a) * rad);
+      q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, -a + (sp > 0 ? 0 : Math.PI));
+      s.set(0.32, 1 + Math.sin(this.time * 7 + i * 2) * 2.2, 0.32);
+      m4.compose(p, q, s); this.birds.setMatrixAt(i, m4);
+    }
+    s.set(1, 1, 1);
+    this.birds.instanceMatrix.needsUpdate = true;
   }
 
   // ---------- frame ----------

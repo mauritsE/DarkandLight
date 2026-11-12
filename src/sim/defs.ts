@@ -27,9 +27,10 @@ export type Cost = Partial<Record<Good, number>>;
 export type BuildingId =
   | 'townhall' | 'house' | 'market' | 'chapel' | 'spire' | 'warehouse'
   | 'woodcutter' | 'sawmill' | 'fishery' | 'quarry' | 'farm' | 'bakery'
-  | 'sheepfarm' | 'weaver' | 'mine' | 'forge' | 'harbor' | 'gate' | 'barracks';
+  | 'sheepfarm' | 'weaver' | 'mine' | 'forge' | 'harbor' | 'gate' | 'barracks'
+  | 'forester' | 'garden' | 'fountain' | 'statue';
 
-export type Category = 'civic' | 'production' | 'war';
+export type Category = 'civic' | 'production' | 'war' | 'decor';
 
 export interface BuildingDef {
   id: BuildingId;
@@ -46,6 +47,7 @@ export interface BuildingDef {
   outputs?: Cost;
   needs?: 'coast' | 'rock' | 'forest';
   radius?: number; // service radius
+  beauty?: number; // charm added to homes nearby
   category: Category;
   unlockPop: number;
   unique?: boolean;
@@ -59,8 +61,8 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   townhall: B({ id: 'townhall', name: 'Keep', desc: 'The heart of your settlement. Roads must lead here.', icon: '🏰', size: 3, gold: 0, cost: {}, upkeep: 0, workers: 0, category: 'civic', unlockPop: 0, hidden: true }),
   house: B({ id: 'house', name: 'House', desc: 'Home for residents. They pay taxes and work your buildings. Upgrades as needs are met.', icon: '🏠', size: 2, gold: 0, cost: { wood: 2 }, upkeep: 0, workers: 0, category: 'civic', unlockPop: 0 }),
   market: B({ id: 'market', name: 'Market', desc: 'Residents nearby can shop. A basic need of every home.', icon: '🛍️', size: 3, gold: 100, cost: { wood: 8 }, upkeep: 10, workers: 0, radius: 10, category: 'civic', unlockPop: 0 }),
-  chapel: B({ id: 'chapel', name: 'Chapel', desc: 'Burghers need a place of quiet. Serves homes nearby.', icon: '⛪', size: 2, gold: 150, cost: { planks: 8, stone: 6 }, upkeep: 15, workers: 0, radius: 11, category: 'civic', unlockPop: 40 }),
-  spire: B({ id: 'spire', name: 'Lumen Spire', desc: 'Burns Umbral Shards into pure light. Luminaries demand it.', icon: '🗼', size: 2, gold: 400, cost: { stone: 12, shards: 6 }, upkeep: 30, workers: 0, radius: 11, cycle: 90, inputs: { shards: 1 }, category: 'civic', unlockPop: 80 }),
+  chapel: B({ id: 'chapel', name: 'Chapel', desc: 'Burghers need a place of quiet. Across the Rift its light heals your soldiers nearby.', icon: '⛪', size: 2, gold: 150, cost: { planks: 8, stone: 6 }, upkeep: 15, workers: 0, radius: 11, category: 'civic', unlockPop: 40 }),
+  spire: B({ id: 'spire', name: 'Lumen Spire', desc: 'Burns Umbral Shards into pure light. Luminaries demand it — and in the Dark World it strikes foes that come near.', icon: '🗼', size: 2, gold: 400, cost: { stone: 12, shards: 6 }, upkeep: 30, workers: 0, radius: 11, cycle: 90, inputs: { shards: 1 }, category: 'civic', unlockPop: 80 }),
   warehouse: B({ id: 'warehouse', name: 'Warehouse', desc: 'Raises the storage limit of every good by 40.', icon: '📦', size: 2, gold: 80, cost: { wood: 6 }, upkeep: 8, workers: 0, category: 'civic', unlockPop: 0 }),
 
   woodcutter: B({ id: 'woodcutter', name: 'Woodcutter', desc: 'Fells trees nearby. More forest in reach means more wood.', icon: '🪓', size: 2, gold: 30, cost: {}, upkeep: 3, workers: 4, cycle: 6, outputs: { wood: 1 }, needs: 'forest', category: 'production', unlockPop: 0 }),
@@ -73,6 +75,12 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   weaver: B({ id: 'weaver', name: 'Weaver', desc: 'Weaves wool into cloth.', icon: '🧵', size: 2, gold: 110, cost: { planks: 6 }, upkeep: 10, workers: 6, cycle: 14, inputs: { wool: 1 }, outputs: { cloth: 1 }, category: 'production', unlockPop: 30 }),
   mine: B({ id: 'mine', name: 'Iron Mine', desc: 'Digs iron ore. Must be near mountains.', icon: '⛏️', size: 2, gold: 150, cost: { planks: 8 }, upkeep: 15, workers: 8, cycle: 14, outputs: { iron: 1 }, needs: 'rock', category: 'production', unlockPop: 50 }),
   forge: B({ id: 'forge', name: 'Forge', desc: 'Hammers iron and wood into weapons.', icon: '🔥', size: 2, gold: 180, cost: { planks: 6, stone: 6 }, upkeep: 18, workers: 6, cycle: 18, inputs: { iron: 1, wood: 1 }, outputs: { weapons: 1 }, category: 'production', unlockPop: 50 }),
+
+  forester: B({ id: 'forester', name: 'Forester', desc: 'Plants new trees on open grass nearby, so your woodcutters never run dry.', icon: '🌲', size: 2, gold: 50, cost: { wood: 2 }, upkeep: 4, workers: 2, cycle: 16, category: 'production', unlockPop: 0 }),
+
+  garden: B({ id: 'garden', name: 'Garden', desc: 'Flower beds and hedges. Homes nearby gain charm and pay more tax.', icon: '🌷', size: 1, gold: 15, cost: {}, upkeep: 0, workers: 0, beauty: 1, category: 'decor', unlockPop: 0 }),
+  statue: B({ id: 'statue', name: 'Statue', desc: 'A monument to your founders. Adds charm to homes nearby.', icon: '🗿', size: 1, gold: 70, cost: { stone: 3 }, upkeep: 0, workers: 0, beauty: 2.5, category: 'decor', unlockPop: 30 }),
+  fountain: B({ id: 'fountain', name: 'Fountain', desc: 'A splashing plaza fountain. Adds much charm to homes nearby.', icon: '⛲', size: 2, gold: 120, cost: { stone: 6 }, upkeep: 2, workers: 0, beauty: 5, category: 'decor', unlockPop: 40 }),
 
   harbor: B({ id: 'harbor', name: 'Harbor', desc: 'Merchant ships dock here to trade. Must stand on the coast.', icon: '⚓', size: 3, gold: 150, cost: { wood: 10 }, upkeep: 10, workers: 0, needs: 'coast', category: 'war', unlockPop: 16, unique: true }),
   gate: B({ id: 'gate', name: 'Rift Gate', desc: 'A doorway to the Dark World. Once raised, the dark will notice you.', icon: '🌀', size: 3, gold: 300, cost: { planks: 10, stone: 10 }, upkeep: 15, workers: 0, category: 'war', unlockPop: 50, unique: true }),
@@ -120,6 +128,18 @@ export const ARMY_PER_BARRACKS = 6;
 export const MAX_BEACONS = 6;
 export const TRAIN_TIME = 6;
 export const BLIGHT_RADIUS = 7;
+export const BEAUTY_RADIUS = 5.5;
+export const BEAUTY_FULL = 6; // charm points for the full bonus
+export const BEAUTY_TAX = 0.2; // extra tax at full charm
+export const SPIRE_RANGE = 7.5;
+export const SPIRE_DMG = 16;
+export const CHAPEL_RANGE = 6.5;
+export const CHAPEL_HEAL = 5; // hp per second
+export const DIFFICULTY = [
+  { name: 'Peaceful', desc: 'No raids. The strongholds only defend themselves.' },
+  { name: 'Standard', desc: 'Raids test your gate now and then.' },
+  { name: 'Relentless', desc: 'Bigger raids, more often.' },
+];
 
 export interface CampDef {
   id: string; name: string; leader: string; color: number;

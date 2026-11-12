@@ -44,7 +44,7 @@ function house(b: MB, tier: number, v: number) {
   return grp;
 }
 
-const BUILDERS: Record<BuildingId, (g: MB, v: number) => void> = {
+const BUILDERS = {
   house: () => {},
   townhall: (g) => {
     g.box(M.stone, 2.7, 0.3, 2.7);
@@ -207,7 +207,46 @@ const BUILDERS: Record<BuildingId, (g: MB, v: number) => void> = {
     g.cyl(M.timber, 0.04, 0.04, 1.8, 1.0, 0.06, -1.0, 4).box(M.red, 0.5, 0.35, 0.03, 0.73, 1.5, -1.0);
     g.box(M.metal, 0.5, 0.04, 0.1, 0.2, 0.3, 0.9).box(M.timber, 0.06, 0.3, 0.06, 0.0, 0.06, 0.9).box(M.timber, 0.06, 0.3, 0.06, 0.4, 0.06, 0.9);
   },
+} as Partial<Record<BuildingId, (g: MB, v: number) => void>> as Record<BuildingId, (g: MB, v: number) => void>;
+
+BUILDERS.forester = (g) => {
+  g.box(M.wood, 0.8, 0.5, 0.7, -0.35, 0, -0.35).gable(M.roofGreen, 0.9, 0.42, 0.85, -0.35, 0.5, -0.35);
+  g.box(M.timber, 0.2, 0.34, 0.05, -0.35, 0, 0.01);
+  g.box(M.dirt, 0.9, 0.05, 0.7, 0.4, 0, 0.45);
+  for (const [x, z] of [[0.15, 0.3], [0.45, 0.55], [0.7, 0.3], [0.3, 0.7], [0.65, 0.68]]) g.cyl(M.trunk, 0.015, 0.02, 0.12, x, 0.05, z, 4).cone(M.hedge, 0.08, 0.2, x, 0.14, z, 5);
+  g.cyl(M.metal, 0.1, 0.08, 0.16, -0.75, 0, 0.5, 7).box(M.timber, 0.03, 0.5, 0.03, 0.75, 0, -0.5, 0, 0, 0.25);
 };
+BUILDERS.garden = (g, v) => {
+  g.box(M.fieldGreen, 0.92, 0.05, 0.92);
+  g.box(M.hedge, 0.92, 0.16, 0.1, 0, 0.03, -0.41).box(M.hedge, 0.1, 0.16, 0.92, -0.41, 0.03, 0);
+  const cols = [M.red, M.yellow, M.purple, M.white, M.blue];
+  for (let i = 0; i < 7; i++) {
+    const x = -0.2 + ((i * 37 + v * 13) % 60) / 100, z = -0.2 + ((i * 53 + v * 7) % 60) / 100;
+    g.sphere(cols[(i + v) % cols.length], 0.055, x, 0.11, z);
+  }
+  if (v % 3 === 0) g.cyl(M.trunk, 0.03, 0.04, 0.25, 0.25, 0.05, 0.25, 5).sphere(M.hedge, 0.2, 0.25, 0.42, 0.25, 1);
+};
+BUILDERS.statue = (g) => {
+  g.box(M.stoneLight, 0.7, 0.12, 0.7).box(M.stone, 0.42, 0.42, 0.42, 0, 0.12, 0);
+  g.box(M.stoneLight, 0.2, 0.36, 0.14, 0, 0.54, 0).sphere(M.stoneLight, 0.085, 0, 0.99, 0);
+  g.box(M.stoneLight, 0.06, 0.3, 0.06, 0.16, 0.66, 0.02, 0, 0, -0.5).box(M.gold, 0.03, 0.5, 0.03, 0.26, 0.76, 0.02);
+  g.box(M.hedge, 0.16, 0.1, 0.16, -0.28, 0.12, 0.28).box(M.hedge, 0.16, 0.1, 0.16, 0.28, 0.12, -0.28);
+};
+BUILDERS.fountain = (g) => {
+  g.cyl(M.stoneLight, 0.9, 0.95, 0.1, 0, 0, 0, 10).cyl(M.stone, 0.72, 0.76, 0.26, 0, 0.1, 0, 10).cyl(M.water, 0.62, 0.62, 0.06, 0, 0.32, 0, 10);
+  g.cyl(M.stoneLight, 0.1, 0.14, 0.6, 0, 0.3, 0, 7).cyl(M.stone, 0.34, 0.12, 0.1, 0, 0.9, 0, 8).cyl(M.water, 0.28, 0.28, 0.04, 0, 0.98, 0, 8);
+  g.cyl(M.stoneLight, 0.05, 0.07, 0.24, 0, 1.0, 0, 6).sphere(M.gold, 0.07, 0, 1.3, 0);
+  for (let i = 0; i < 4; i++) g.box(M.hedge, 0.2, 0.14, 0.2, Math.cos(i * PI / 2 + 0.78) * 0.82, 0.1, Math.sin(i * PI / 2 + 0.78) * 0.82);
+};
+
+/** A cluster of harvestable shard crystals in the Dark World. */
+export function nodeModel(): THREE.Group {
+  const g = new MB();
+  g.cyl(S.obsidian, 0.6, 0.75, 0.14, 0, 0, 0, 6);
+  const sp: [number, number, number, number, number][] = [[0, 0, 1.5, 0, 0], [0.32, 0.1, 0.9, 0.35, 0.3], [-0.3, 0.18, 1.0, -0.3, -0.2], [0.05, -0.34, 0.75, 0.1, -0.45], [-0.15, 0.36, 0.6, -0.4, 0.4]];
+  for (const [x, z, h, rx, rz] of sp) g.add(S.shard, new THREE.OctahedronGeometry(0.2).scale(1, h / 0.4, 1), x, h * 0.5, z, x * 3, rx, rz);
+  return g.build();
+}
 
 export function buildingModel(type: BuildingId, tier: number, v: number): THREE.Group {
   if (type === 'house') return house(new MB(), tier, v);

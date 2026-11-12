@@ -18,6 +18,7 @@ export interface Building {
   sat?: number;
   upT?: number;
   cov?: Partial<Record<BuildingId, boolean>>;
+  beauty?: number; // 0..1 charm from ornaments nearby
 }
 
 export const ORDER = { Idle: 0, Move: 1, Attack: 2, AttackMove: 3 } as const;
@@ -60,6 +61,9 @@ export interface Ship {
 
 export interface CampState { alive: boolean; entId: number; respawn: number; well: number }
 
+export interface ShardNode { x: number; z: number; ready: boolean; t: number; prog: number }
+export interface Contract { merchant: number; good: Good; qty: number; reward: number; t: number }
+
 export interface TradeOrder { mode: 'none' | 'sell' | 'buy'; level: number }
 
 export interface GameState {
@@ -71,7 +75,7 @@ export interface GameState {
   stock: Record<Good, number>;
   buildings: Building[];
   roads: number[];
-  cleared: number[];
+  tiles: Record<string, number>; // tile type overrides (cleared or planted forest)
   flat: [number, number][];
   nextId: number;
   pop: number;
@@ -93,7 +97,11 @@ export interface GameState {
   trainQ: UnitKind[];
   trainT: number;
   quest: number;
-  stats: { trades: number; kills: number; trained: number; visitedDark: boolean; t2: number; t3: number };
+  difficulty: number;
+  nodes: ShardNode[];
+  contracts: Contract[];
+  contractT: number;
+  stats: { trades: number; kills: number; trained: number; visitedDark: boolean; t2: number; t3: number; contracts: number; harvested: number };
   won: boolean;
 }
 
@@ -110,5 +118,8 @@ export type GameEvent =
   | { t: 'campDown'; camp: number }
   | { t: 'upgrade'; id: number }
   | { t: 'trade' }
+  | { t: 'prod'; id: number; good: Good; n: number }
+  | { t: 'harvest'; x: number; z: number; n: number }
+  | { t: 'loot'; x: number; z: number; n: number }
   | { t: 'quest'; msg: string }
   | { t: 'victory' };

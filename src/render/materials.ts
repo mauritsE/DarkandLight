@@ -36,6 +36,7 @@ export const S = {
   eyeGreen: std(0x002200, { emissive: 0x7dff5a, emissiveIntensity: 3 }),
   crystalA: std(0x1a2a40, { emissive: 0x3ad6ff, emissiveIntensity: 1.6 }),
   crystalB: std(0x2a1a40, { emissive: 0xb45aff, emissiveIntensity: 1.6 }),
+  shard: std(0x40305a, { emissive: 0xff7ad9, emissiveIntensity: 2.4 }),
   steel: std(0xc9ced6, { metalness: 0.3, roughness: 0.4, emissive: 0x8fa0c0, emissiveIntensity: 0.35 }),
   tabard: std(0xf2e6c4, { emissive: 0xf2e6c4, emissiveIntensity: 0.35 }), tabardBlue: std(0x4a78e0, { emissive: 0x3d62d8, emissiveIntensity: 0.5 }), tabardGold: std(0xf0c64a, { emissive: 0xf0a020, emissiveIntensity: 0.6 }),
   skin: std(0xe2b48c, { emissive: 0xe2b48c, emissiveIntensity: 0.25 }), leather: std(0x8a6546, { emissive: 0x8a6546, emissiveIntensity: 0.2 }), ranger: std(0x4fb060, { emissive: 0x3fa050, emissiveIntensity: 0.45 }),
@@ -55,7 +56,7 @@ export function setGhost(dark: boolean) {
     if (dark) {
       m.transparent = true; m.depthWrite = special;
       m.opacity = special ? 0.95 : m === M.foliage ? 0.55 : m === M.road ? 0.16 : 0.3;
-      if (m === M.window) m.emissiveIntensity = 3.2;
+      if (m === M.window) m.emissiveIntensity = 1.9;
       else if (!special) { m.emissive.setHex(m === M.foliage || m === M.trunk ? 0x24104a : 0x6f8fd0); m.emissiveIntensity = m === M.foliage ? 0.6 : 0.2; }
       if (m === M.foliage) m.color.setHex(0x7a5cc8);
     } else {

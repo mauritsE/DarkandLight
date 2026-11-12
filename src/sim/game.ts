@@ -1,5 +1,5 @@
 import {
-  BASE_STORAGE, BLIGHT_RADIUS, BUILDINGS, BuildingId, CAMPS, Cost, GOOD_IDS, Good, MERCHANTS,
+  BASE_STORAGE, BEAUTY_FULL, BEAUTY_RADIUS, BLIGHT_RADIUS, BUILDINGS, BuildingId, CAMPS, Cost, GOOD_IDS, Good, MERCHANTS,
   ROAD_COST, UNITS, WAREHOUSE_STORAGE,
 } from './defs';
 import { Building, CampState, Entity, GameEvent, GameState, ORDER } from './state';
@@ -9,7 +9,7 @@ import { tickTrade } from './trade';
 import { tickCombat } from './combat';
 import { tickQuests } from './quests';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export interface PlaceCheck { ok: boolean; reason?: string }
 
@@ -29,13 +29,18 @@ export class Game {
   treeVer = 0;
   rand: () => number;
   private questT = 0;
+  /** Per-minute flows of each good, refreshed every tick (for the UI). */
+  rates = {} as Record<Good, { prod: number; cons: number }>;
+  ledger = { taxes: 0, buildings: 0, army: 0 };
+  spireCd = new Map<number, number>();
 
   constructor(state: GameState) {
     this.state = state;
     this.world = new World(state.seed);
     this.rand = mulberry32((state.seed ^ 0x9e3779b9) + Math.floor(state.time * 10));
     const W = this.world;
-    for (const i of state.cleared) if (W.type[i] === T.Forest) W.type[i] = T.Grass;
+    for (const k in state.tiles) W.type[+k] = state.tiles[k];
+    for (const g of GOOD_IDS) this.rates[g] = { prod: 0, cons: 0 };
     for (const [i, h] of state.flat) W.h[i] = h;
     for (const b of state.buildings) this.stamp(b, b.id);
     for (const i of state.roads) this.road[i] = 1;
@@ -43,13 +48,13 @@ export class Game {
     this.recomputeBlight();
   }
 
-  static create(seed: number): Game {
+  static create(seed: number, difficulty = 1): Game {
     const stock = {} as Record<Good, number>;
     for (const g of GOOD_IDS) stock[g] = 0;
     Object.assign(stock, { wood: 50, planks: 10, stone: 10, fish: 20 });
     const state: GameState = {
       version: SAVE_VERSION, seed, time: 0, gold: 900, income: 0, stock,
-      buildings: [], roads: [], cleared: [], flat: [], nextId: 1,
+      buildings: [], roads: [], tiles: {}, flat: [], nextId: 1,
       pop: 0, peakPop: 0, jobs: 0, workEff: 1, happiness: 1, needSat: { fish: 1, bread: 1, cloth: 1 },
       autoUpgrade: true,
       ships: MERCHANTS.map((_, i) => ({ merchant: i, phase: 'away' as const, t: 20 + i * 45, stock: {} })),
@@ -57,7 +62,8 @@ export class Game {
       entities: [], projectiles: [],
       camps: CAMPS.map(() => ({ alive: true, entId: 0, respawn: 40, well: 90 }) as CampState),
       raidTimer: 0, raidCount: 0, gateDown: 0, trainQ: [], trainT: 0, quest: 0,
-      stats: { trades: 0, kills: 0, trained: 0, visitedDark: false, t2: 0, t3: 0 },
+      difficulty, nodes: [], contracts: [], contractT: 90,
+      stats: { trades: 0, kills: 0, trained: 0, visitedDark: false, t2: 0, t3: 0, contracts: 0, harvested: 0 },
       won: false,
     };
     const g = new Game(state);
@@ -74,6 +80,15 @@ export class Game {
         g.spawnNear(k, 1, site.x + 0.5 + Math.cos(a) * 2.6, site.z + 0.5 + Math.sin(a) * 2.6, ci);
       });
     });
+    // Shard crystals scattered over the dark island, away from home and from each other
+    const W = g.world;
+    for (let tries = 0; tries < 4000 && state.nodes.length < 10; tries++) {
+      const x = 3 + Math.floor(g.rand() * (N - 6)), z = 3 + Math.floor(g.rand() * (N - 6));
+      if (!W.isWalk(x, z) || Math.hypot(x - s.x, z - s.z) < 11) continue;
+      if (W.campSites.some((c) => Math.hypot(c.x - x, c.z - z) < 4.5)) continue;
+      if (state.nodes.some((n) => Math.hypot(n.x - x, n.z - z) < 9)) continue;
+      state.nodes.push({ x: x + 0.5, z: z + 0.5, ready: true, t: 0, prog: 0 });
+    }
     g.recomputeBlight();
     return g;
   }
@@ -206,9 +221,31 @@ export class Game {
   private clearForest(x: number, z: number) {
     const i = z * N + x;
     if (this.world.type[i] === T.Forest) {
-      this.world.type[i] = T.Grass; this.state.cleared.push(i); this.treeVer++;
-      for (const b of this.state.buildings) if (b.type === 'woodcutter') b.resEff = this.resEfficiency('woodcutter', b.x, b.z);
+      this.world.type[i] = T.Grass; this.state.tiles[i] = T.Grass; this.treeVer++;
+      this.refreshWoodcutters();
     }
+  }
+  private refreshWoodcutters() {
+    for (const b of this.state.buildings) if (b.type === 'woodcutter') b.resEff = this.resEfficiency('woodcutter', b.x, b.z);
+  }
+  /** Forester: grow a tree on a free grass tile near the building. Returns false if no room. */
+  plantNear(b: Building): boolean {
+    const c = this.center(b), spots: number[] = [];
+    for (let dz = -5; dz <= 5; dz++) for (let dx = -5; dx <= 5; dx++) {
+      const x = Math.floor(c.x) + dx, z = Math.floor(c.z) + dz;
+      if (!this.world.inb(x, z) || Math.hypot(x + 0.5 - c.x, z + 0.5 - c.z) > 5) continue;
+      const i = z * N + x;
+      if (this.world.type[i] !== T.Grass || this.occ[i] || this.road[i] || this.blight[i]) continue;
+      // leave a one-tile margin around roads and buildings so the town can still breathe
+      let near = false;
+      for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const j = (z + az) * N + x + ax; if (this.world.inb(x + ax, z + az) && (this.occ[j] || this.road[j])) near = true; }
+      if (!near) spots.push(i);
+    }
+    if (!spots.length) return false;
+    const i = spots[Math.floor(this.rand() * spots.length)];
+    this.world.type[i] = T.Forest; this.state.tiles[i] = T.Forest; this.treeVer++;
+    this.refreshWoodcutters();
+    return true;
   }
 
   place(type: BuildingId, x: number, z: number): PlaceCheck {
@@ -297,9 +334,13 @@ export class Game {
 
   recomputeCoverage() {
     const services = this.state.buildings.filter((b) => BUILDINGS[b.type].radius && b.connected && (b.type !== 'spire' || (b.fuel ?? 0) > 0));
+    const decor = this.state.buildings.filter((b) => BUILDINGS[b.type].beauty);
     for (const h of this.state.buildings) {
       if (h.type !== 'house') continue;
       const hc = this.center(h); h.cov = {};
+      let charm = 0;
+      for (const o of decor) { const c = this.center(o); if (Math.hypot(c.x - hc.x, c.z - hc.z) <= BEAUTY_RADIUS) charm += BUILDINGS[o.type].beauty!; }
+      h.beauty = Math.min(1, charm / BEAUTY_FULL);
       for (const sv of services) {
         const c = this.center(sv);
         if (Math.hypot(c.x - hc.x, c.z - hc.z) <= BUILDINGS[sv.type].radius!) h.cov[sv.type] = true;
