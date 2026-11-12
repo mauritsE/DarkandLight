@@ -36,6 +36,7 @@ export class Game {
 
   constructor(state: GameState) {
     this.state = state;
+    state.qdone ??= [];
     this.world = new World(state.seed);
     this.rand = mulberry32((state.seed ^ 0x9e3779b9) + Math.floor(state.time * 10));
     const W = this.world;
@@ -61,7 +62,7 @@ export class Game {
       orders: {}, rep: MERCHANTS.map(() => 0),
       entities: [], projectiles: [],
       camps: CAMPS.map(() => ({ alive: true, entId: 0, respawn: 40, well: 90 }) as CampState),
-      raidTimer: 0, raidCount: 0, gateDown: 0, trainQ: [], trainT: 0, quest: 0,
+      raidTimer: 0, raidCount: 0, gateDown: 0, trainQ: [], trainT: 0, quest: 0, qdone: [],
       difficulty, nodes: [], contracts: [], contractT: 90,
       stats: { trades: 0, kills: 0, trained: 0, visitedDark: false, t2: 0, t3: 0, contracts: 0, harvested: 0 },
       won: false,

@@ -35,9 +35,13 @@ export const QUESTS: Quest[] = [
 
 export function tickQuests(g: Game) {
   const S = g.state;
-  while (S.quest < QUESTS.length && QUESTS[S.quest].done(g)) {
-    const q = QUESTS[S.quest];
-    S.gold += q.reward; S.quest++;
+  // Any quest pays out as soon as its goal is met, so skipping one never blocks the rest.
+  // `S.quest` is simply the first one still open — the one shown to the player.
+  QUESTS.forEach((q, i) => {
+    if (S.qdone[i] || !q.done(g)) return;
+    S.qdone[i] = true; S.gold += q.reward;
     g.events.push({ t: 'quest', msg: `${q.title} complete — +${q.reward} gold` });
-  }
+  });
+  S.quest = QUESTS.findIndex((_, i) => !S.qdone[i]);
+  if (S.quest < 0) S.quest = QUESTS.length;
 }

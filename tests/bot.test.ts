@@ -5,7 +5,7 @@ import { Game } from '../src/sim/game';
 import { BUILDINGS, BuildingId, CAMPS, UNITS } from '../src/sim/defs';
 import { N, T } from '../src/sim/world';
 import { armyCap, armySize, orderAttack, orderMove, train } from '../src/sim/combat';
-import { sell } from '../src/sim/trade';
+import { deliver, sell } from '../src/sim/trade';
 
 function link(g: Game, x: number, z: number): boolean {
   if (g.netDirty) g.recomputeNet();
@@ -78,6 +78,7 @@ describe('bot playthrough', () => {
       // sell surplus when a ship is in
       const ship = S.ships.find((sh) => sh.phase === 'docked');
       if (ship) for (const k of ['planks', 'stone', 'cloth', 'bread', 'wood'] as const) if (S.stock[k] > 45) sell(g, ship, k, Math.floor(S.stock[k] - 35));
+      for (let i = S.contracts.length - 1; i >= 0; i--) deliver(g, i);
       if (g.find('gate') && !tGate) tGate = t;
       const army = () => S.entities.filter((e) => e.team === 0 && e.kind !== 'gate' && e.kind !== 'beacon');
       const cap = armyCap(g);

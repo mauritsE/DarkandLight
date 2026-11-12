@@ -96,7 +96,8 @@ export interface GameState {
   gateDown: number;
   trainQ: UnitKind[];
   trainT: number;
-  quest: number;
+  quest: number; // first open quest (shown in the HUD)
+  qdone: boolean[];
   difficulty: number;
   nodes: ShardNode[];
   contracts: Contract[];
