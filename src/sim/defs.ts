@@ -74,7 +74,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   sheepfarm: B({ id: 'sheepfarm', name: 'Sheep Farm', desc: 'Raises sheep for wool.', icon: '🐑', size: 3, gold: 80, cost: { wood: 6 }, upkeep: 6, workers: 4, cycle: 14, outputs: { wool: 1 }, category: 'production', unlockPop: 30 }),
   weaver: B({ id: 'weaver', name: 'Weaver', desc: 'Weaves wool into cloth.', icon: '🧵', size: 2, gold: 110, cost: { planks: 6 }, upkeep: 10, workers: 6, cycle: 14, inputs: { wool: 1 }, outputs: { cloth: 1 }, category: 'production', unlockPop: 30 }),
   mine: B({ id: 'mine', name: 'Iron Mine', desc: 'Digs iron ore. Must be near mountains.', icon: '⛏️', size: 2, gold: 150, cost: { planks: 8 }, upkeep: 15, workers: 8, cycle: 14, outputs: { iron: 1 }, needs: 'rock', category: 'production', unlockPop: 50 }),
-  forge: B({ id: 'forge', name: 'Forge', desc: 'Hammers iron and wood into weapons.', icon: '🔥', size: 2, gold: 180, cost: { planks: 6, stone: 6 }, upkeep: 18, workers: 6, cycle: 18, inputs: { iron: 1, wood: 1 }, outputs: { weapons: 1 }, category: 'production', unlockPop: 50 }),
+  forge: B({ id: 'forge', name: 'Forge', desc: 'Hammers iron and wood into weapons.', icon: '🔥', size: 2, gold: 180, cost: { planks: 6, stone: 6 }, upkeep: 18, workers: 6, cycle: 15, inputs: { iron: 1, wood: 1 }, outputs: { weapons: 1 }, category: 'production', unlockPop: 50 }),
 
   forester: B({ id: 'forester', name: 'Forester', desc: 'Plants new trees on open grass nearby, so your woodcutters never run dry.', icon: '🌲', size: 2, gold: 50, cost: { wood: 2 }, upkeep: 4, workers: 2, cycle: 16, category: 'production', unlockPop: 0 }),
 
@@ -128,6 +128,7 @@ export const ARMY_PER_BARRACKS = 6;
 export const MAX_BEACONS = 6;
 export const TRAIN_TIME = 6;
 export const BLIGHT_RADIUS = 7;
+export const GATE_MIN_CAMP_DIST = 17; // a gate this close to a stronghold would be under its guards' noses
 export const BEAUTY_RADIUS = 5.5;
 export const BEAUTY_FULL = 6; // charm points for the full bonus
 export const BEAUTY_TAX = 0.2; // extra tax at full charm

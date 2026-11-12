@@ -1,5 +1,5 @@
 import {
-  BASE_STORAGE, BEAUTY_FULL, BEAUTY_RADIUS, BLIGHT_RADIUS, BUILDINGS, BuildingId, CAMPS, Cost, GOOD_IDS, Good, MERCHANTS,
+  BASE_STORAGE, BEAUTY_FULL, BEAUTY_RADIUS, BLIGHT_RADIUS, BUILDINGS, GATE_MIN_CAMP_DIST, BuildingId, CAMPS, Cost, GOOD_IDS, Good, MERCHANTS,
   ROAD_COST, UNITS, WAREHOUSE_STORAGE,
 } from './defs';
 import { Building, CampState, Entity, GameEvent, GameState, ORDER } from './state';
@@ -8,6 +8,7 @@ import { tickEconomy } from './economy';
 import { tickTrade } from './trade';
 import { tickCombat } from './combat';
 import { tickQuests } from './quests';
+import { nearestWalk } from './path';
 
 export const SAVE_VERSION = 4;
 
@@ -193,6 +194,12 @@ export class Game {
       if (r) return { ok: false, reason: r };
     }
     if (d.unique && this.find(type)) return { ok: false, reason: `Only one ${d.name} allowed` };
+    if (type === 'gate') {
+      for (let ci = 0; ci < this.state.camps.length; ci++) {
+        const c = this.world.campSites[ci];
+        if (this.state.camps[ci].alive && Math.hypot(c.x - (x + 1), c.z - (z + 1)) < GATE_MIN_CAMP_DIST) return { ok: false, reason: 'Too close to a dark stronghold — the Rift would open under its guards' };
+      }
+    }
     if (d.needs && this.resEfficiency(type, x, z) <= 0) {
       return { ok: false, reason: d.needs === 'coast' ? 'Must be on the coast' : d.needs === 'rock' ? 'Must be near mountains' : 'Needs forest nearby' };
     }
@@ -363,7 +370,9 @@ export class Game {
       const px = x + (i ? (this.rand() - 0.5) * (1 + i * 0.3) : 0), pz = z + (i ? (this.rand() - 0.5) * (1 + i * 0.3) : 0);
       if (this.world.isWalk(Math.floor(px), Math.floor(pz))) return this.spawn(kind, team, px, pz, camp);
     }
-    return this.spawn(kind, team, x, z, camp);
+    // hemmed in by rock or water: fall back to the closest ground there is
+    const p = nearestWalk(this.world, x, z);
+    return this.spawn(kind, team, p.x, p.z, camp);
   }
   gateEnt() { return this.state.entities.find((e) => e.kind === 'gate'); }
 

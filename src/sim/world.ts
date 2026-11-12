@@ -115,16 +115,18 @@ export class World {
         if (t !== T.Grass && t !== T.Forest) { ok = false; break; }
       }
       if (!ok) continue;
-      let open = 0, forest = 0, rock = 0, water = 0;
+      let open = 0, forest = 0, rock = 0, water = 0, room = 0;
       for (let dz = -16; dz <= 16; dz++) for (let dx = -16; dx <= 16; dx++) {
         if (!this.inb(x + dx, z + dz)) continue;
         const t = this.type[(z + dz) * N + x + dx], dd = dx * dx + dz * dz;
         if (dd <= 81 && (t === T.Grass || t === T.Forest)) open++;
+        if (dd <= 196 && (t === T.Grass || t === T.Forest || t === T.Sand)) room++;
         if (dd <= 64 && t === T.Forest) forest++;
         if (dd <= 256 && t === T.Rock) rock++;
         if (dd <= 121 && t === T.Water) water++;
       }
-      if (forest < 14 || rock < 4 || water < 6 || open < 150) continue;
+      // enough room for a real town within a short walk, not a ledge between sea and mountains
+      if (forest < 14 || rock < 4 || water < 6 || open < 150 || room < 400) continue;
       const cd = Math.hypot(x - N / 2, z - N / 2);
       const score = open - cd * 3 + Math.min(forest, 40);
       if (score > best) { best = score; bx = x; bz = z; }

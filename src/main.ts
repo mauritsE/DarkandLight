@@ -55,6 +55,12 @@ const app: App = {
     for (const e of app.game.state.entities) if (e.team === 0 && UNITS[e.kind].speed > 0) renderer.selected.add(e.id);
   },
   newGame() { startGame(Game.create(newSeed(), app.game.state.difficulty)); },
+  toggleGfx() {
+    const low = !renderer.low;
+    renderer.setQuality(low);
+    localStorage.setItem('dal-gfx', low ? 'low' : 'high');
+    return low;
+  },
   retreat() {
     const g = app.game.gateEnt(), ids = [...renderer.selected];
     if (!g || !ids.length) return;
@@ -64,6 +70,7 @@ const app: App = {
 };
 const hud = new Hud(app);
 renderer.setGame(app.game);
+if (localStorage.getItem('dal-gfx') === 'low' || new URLSearchParams(location.search).get('gfx') === 'low') renderer.setQuality(true);
 
 function startGame(g: Game) {
   app.game = g; app.dark = false; app.tool = null; app.speed = 1;

@@ -20,6 +20,7 @@ export interface App {
   setSpeed(n: number): void;
   selectAll(): void;
   newGame(): void;
+  toggleGfx(): boolean;
 }
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -90,7 +91,8 @@ export class Hud {
     switch (a) {
       case 'speed': app.setSpeed(+d.n!); break;
       case 'mute': $('s-mute').textContent = snd.toggleMute() ? '🔇' : '🔊'; break;
-      case 'menu': this.modal(`<h2>Dark &amp; Light</h2><p>Your city is saved automatically.</p><p><button data-act="closeModal">Resume</button> <button data-act="newGame">Start a new island</button></p>`); break;
+      case 'menu': this.modal(`<h2>Dark &amp; Light</h2><p>Your city is saved automatically.</p><p><button data-act="gfx">Graphics: ${app.renderer.low ? 'Low' : 'High'}</button></p><p><button data-act="closeModal">Resume</button> <button data-act="newGame">Start a new island</button></p>`); break;
+      case 'gfx': (document.querySelector('[data-act="gfx"]') as HTMLElement).textContent = `Graphics: ${app.toggleGfx() ? 'Low' : 'High'}`; break;
       case 'closeModal': $('modal').classList.add('hidden'); break;
       case 'newGame': $('modal').classList.add('hidden'); app.newGame(); break;
       case 'tab': this.tab = d.t as Category; snd.click(); break;

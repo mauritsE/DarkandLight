@@ -158,6 +158,15 @@ export class Renderer {
     this.setDark(false);
   }
 
+  low = false;
+  /** Low quality drops shadows, bloom and high-DPI rendering for slower machines. */
+  setQuality(low: boolean) {
+    this.low = low;
+    this.sun.castShadow = !low;
+    this.bloom.enabled = !low;
+    this.three.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.resize();
+  }
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.three.setSize(w, h, false);
