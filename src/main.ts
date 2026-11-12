@@ -125,9 +125,17 @@ function applyTool(cx: number, cy: number, dragging: boolean) {
 }
 
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+const touches = new Map<number, { x: number; y: number }>();
+let pinch = 0;
+const endTouch = (e: PointerEvent) => { touches.delete(e.pointerId); pinch = 0; };
+canvas.addEventListener('pointercancel', endTouch);
 canvas.addEventListener('pointerdown', (e) => {
   if (!started) return;
   canvas.setPointerCapture(e.pointerId);
+  if (e.pointerType === 'touch') {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) { drag = null; pinch = 0; return; }
+  }
   const p = renderer.screenToGround(e.clientX, e.clientY);
   drag = { kind: 'pan', sx: e.clientX, sy: e.clientY, moved: false, gx: p?.x ?? 0, gz: p?.z ?? 0, lastTile: -1, button: e.button };
   if (e.button === 2) { drag.kind = 'rotate'; return; }
@@ -139,6 +147,15 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
   mouse.x = e.clientX; mouse.y = e.clientY;
+  if (touches.has(e.pointerId)) {
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      const [a, b] = [...touches.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinch) renderer.cam.tdist *= pinch / d;
+      pinch = d;
+      return;
+    }
+  }
   if (!drag) return;
   const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
   if (Math.hypot(dx, dy) > 5) drag.moved = true;
@@ -157,6 +174,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerup', (e) => {
   const d = drag; drag = null;
+  endTouch(e);
   $('selbox').classList.add('hidden');
   if (!d || !started) return;
   const g = app.game, sel = renderer.selected;

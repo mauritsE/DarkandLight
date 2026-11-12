@@ -46,7 +46,7 @@ export class Game {
   static create(seed: number): Game {
     const stock = {} as Record<Good, number>;
     for (const g of GOOD_IDS) stock[g] = 0;
-    Object.assign(stock, { wood: 40, planks: 10, stone: 10, fish: 20 });
+    Object.assign(stock, { wood: 50, planks: 10, stone: 10, fish: 20 });
     const state: GameState = {
       version: SAVE_VERSION, seed, time: 0, gold: 900, income: 0, stock,
       buildings: [], roads: [], cleared: [], flat: [], nextId: 1,

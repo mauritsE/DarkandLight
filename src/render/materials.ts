@@ -31,14 +31,14 @@ export const S = {
   rune: std(0x221133, { emissive: 0xa46bff, emissiveIntensity: 2.2 }),
   // dark world
   obsidian: std(0x1a1524, { roughness: 0.5 }), bone: std(0xb9b0a0), darkWood: std(0x2a2030),
-  ghoul: std(0x5a3b78), ghoulDark: std(0x2e1f40), spitter: std(0x3f6b4a), brute: std(0x6b2f2a), sovereign: std(0x2a1030, { metalness: 0.5, roughness: 0.4 }),
+  ghoul: std(0x8a55c0, { emissive: 0x6a2fb0, emissiveIntensity: 0.35 }), ghoulDark: std(0x3e2a58), spitter: std(0x4f9a5a, { emissive: 0x2f7a3a, emissiveIntensity: 0.35 }), brute: std(0xa03a30, { emissive: 0x80201a, emissiveIntensity: 0.35 }), sovereign: std(0x2a1030, { metalness: 0.5, roughness: 0.4 }),
   eyeRed: std(0x220000, { emissive: 0xff3030, emissiveIntensity: 3 }),
   eyeGreen: std(0x002200, { emissive: 0x7dff5a, emissiveIntensity: 3 }),
   crystalA: std(0x1a2a40, { emissive: 0x3ad6ff, emissiveIntensity: 1.6 }),
   crystalB: std(0x2a1a40, { emissive: 0xb45aff, emissiveIntensity: 1.6 }),
-  steel: std(0xc9ced6, { metalness: 0.7, roughness: 0.3 }),
-  tabard: std(0xf2e6c4), tabardBlue: std(0x3d62b8), tabardGold: std(0xf0c64a, { emissive: 0xf0a020, emissiveIntensity: 0.6 }),
-  skin: std(0xe2b48c), leather: std(0x7a5536),
+  steel: std(0xc9ced6, { metalness: 0.3, roughness: 0.4, emissive: 0x8fa0c0, emissiveIntensity: 0.35 }),
+  tabard: std(0xf2e6c4, { emissive: 0xf2e6c4, emissiveIntensity: 0.35 }), tabardBlue: std(0x4a78e0, { emissive: 0x3d62d8, emissiveIntensity: 0.5 }), tabardGold: std(0xf0c64a, { emissive: 0xf0a020, emissiveIntensity: 0.6 }),
+  skin: std(0xe2b48c, { emissive: 0xe2b48c, emissiveIntensity: 0.25 }), leather: std(0x8a6546, { emissive: 0x8a6546, emissiveIntensity: 0.2 }), ranger: std(0x4fb060, { emissive: 0x3fa050, emissiveIntensity: 0.45 }),
   campGlow: [0xb04cff, 0xff5a2a, 0xff2a6a].map((c) => std(0x110011, { emissive: c, emissiveIntensity: 2.6 })),
 };
 
@@ -54,12 +54,14 @@ export function setGhost(dark: boolean) {
     const special = m === M.window || m === M.ember;
     if (dark) {
       m.transparent = true; m.depthWrite = special;
-      m.opacity = special ? 0.95 : m === M.foliage ? 0.5 : 0.3;
+      m.opacity = special ? 0.95 : m === M.foliage ? 0.55 : m === M.road ? 0.16 : 0.3;
       if (m === M.window) m.emissiveIntensity = 3.2;
-      else if (!special) { m.emissive.setHex(m === M.foliage || m === M.trunk ? 0x24104a : 0x6f8fd0); m.emissiveIntensity = m === M.foliage ? 0.5 : 0.35; }
+      else if (!special) { m.emissive.setHex(m === M.foliage || m === M.trunk ? 0x24104a : 0x6f8fd0); m.emissiveIntensity = m === M.foliage ? 0.6 : 0.2; }
+      if (m === M.foliage) m.color.setHex(0x7a5cc8);
     } else {
       m.transparent = false; m.depthWrite = true; m.opacity = b.opacity;
       m.emissive.setHex(b.emissive); m.emissiveIntensity = b.ei;
+      if (m === M.foliage) m.color.setHex(0xffffff);
     }
     m.needsUpdate = true;
   }

@@ -161,8 +161,8 @@ export class World {
     for (const c of cands) far = Math.max(far, c.d);
     if (far < 34) return false;
     if (!pick(far, 0)) return false; // sovereign: farthest
-    if (!pick(22, 16)) return false; // hollow: near
-    if (!pick(Math.max(28, far * 0.7), 15)) return false; // ashen: mid
+    if (!pick(22, 20)) return false; // hollow: near
+    if (!pick(Math.max(28, far * 0.7), 20)) return false; // ashen: mid
     this.campSites = [sites[1], sites[2], sites[0]];
 
     this.flatten(bx - 2, bz - 2, 5);

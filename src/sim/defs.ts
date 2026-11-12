@@ -63,7 +63,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   spire: B({ id: 'spire', name: 'Lumen Spire', desc: 'Burns Umbral Shards into pure light. Luminaries demand it.', icon: '🗼', size: 2, gold: 400, cost: { stone: 12, shards: 6 }, upkeep: 30, workers: 0, radius: 11, cycle: 90, inputs: { shards: 1 }, category: 'civic', unlockPop: 80 }),
   warehouse: B({ id: 'warehouse', name: 'Warehouse', desc: 'Raises the storage limit of every good by 40.', icon: '📦', size: 2, gold: 80, cost: { wood: 6 }, upkeep: 8, workers: 0, category: 'civic', unlockPop: 0 }),
 
-  woodcutter: B({ id: 'woodcutter', name: 'Woodcutter', desc: 'Fells trees nearby. More forest in reach means more wood.', icon: '🪓', size: 2, gold: 30, cost: {}, upkeep: 3, workers: 4, cycle: 8, outputs: { wood: 1 }, needs: 'forest', category: 'production', unlockPop: 0 }),
+  woodcutter: B({ id: 'woodcutter', name: 'Woodcutter', desc: 'Fells trees nearby. More forest in reach means more wood.', icon: '🪓', size: 2, gold: 30, cost: {}, upkeep: 3, workers: 4, cycle: 6, outputs: { wood: 1 }, needs: 'forest', category: 'production', unlockPop: 0 }),
   sawmill: B({ id: 'sawmill', name: 'Sawmill', desc: 'Saws wood into planks.', icon: '🪚', size: 2, gold: 60, cost: { wood: 4 }, upkeep: 5, workers: 4, cycle: 10, inputs: { wood: 1 }, outputs: { planks: 1 }, category: 'production', unlockPop: 0 }),
   fishery: B({ id: 'fishery', name: 'Fishery', desc: 'Catches fish. Must stand on the coast.', icon: '🎣', size: 2, gold: 40, cost: { wood: 4 }, upkeep: 4, workers: 4, cycle: 9, outputs: { fish: 1 }, needs: 'coast', category: 'production', unlockPop: 0 }),
   quarry: B({ id: 'quarry', name: 'Quarry', desc: 'Cuts stone. Must be near mountains.', icon: '🪨', size: 2, gold: 80, cost: { wood: 6 }, upkeep: 8, workers: 6, cycle: 12, outputs: { stone: 1 }, needs: 'rock', category: 'production', unlockPop: 0 }),
@@ -98,7 +98,7 @@ export type UnitKind =
 export interface UnitDef {
   name: string; icon: string; desc?: string;
   hp: number; dmg: number; range: number; cd: number; speed: number;
-  aggro: number; radius: number; ranged?: boolean;
+  aggro: number; radius: number; ranged?: boolean; aoe?: number;
   gold?: number; cost?: Cost; upkeep?: number;
 }
 
@@ -107,12 +107,12 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   archer: { name: 'Archer', icon: '🏹', desc: 'Strikes from afar. Fragile.', hp: 55, dmg: 9, range: 5.5, cd: 1.3, speed: 2.4, aggro: 7.5, radius: 0.28, ranged: true, gold: 60, cost: { weapons: 1, wood: 2 }, upkeep: 3 },
   knight: { name: 'Dawnblade', icon: '🌟', desc: 'Shard-forged champion of the light.', hp: 240, dmg: 27, range: 1.0, cd: 1.1, speed: 2.7, aggro: 7, radius: 0.36, gold: 150, cost: { weapons: 2, shards: 2 }, upkeep: 8 },
   beacon: { name: 'Light Beacon', icon: '🕯️', desc: 'A tower of light that burns nearby foes. Built in the Dark World.', hp: 260, dmg: 14, range: 6.5, cd: 1.2, speed: 0, aggro: 6.5, radius: 0.5, ranged: true, gold: 120, cost: { stone: 4, shards: 2 }, upkeep: 4 },
-  gate: { name: 'Rift Gate', icon: '🌀', hp: 600, dmg: 10, range: 5, cd: 1.0, speed: 0, aggro: 5, radius: 1.3, ranged: true },
-  ghoul: { name: 'Hollow Ghoul', icon: '👹', hp: 55, dmg: 7, range: 0.9, cd: 1.1, speed: 2.4, aggro: 8, radius: 0.3 },
-  spitter: { name: 'Ash Spitter', icon: '🦂', hp: 40, dmg: 8, range: 5, cd: 1.6, speed: 2.0, aggro: 8, radius: 0.28, ranged: true },
-  brute: { name: 'Cinder Brute', icon: '👺', hp: 210, dmg: 20, range: 1.1, cd: 1.6, speed: 1.7, aggro: 8, radius: 0.45 },
-  sovereign: { name: 'The Night Sovereign', icon: '👑', hp: 950, dmg: 42, range: 1.5, cd: 1.5, speed: 1.6, aggro: 9, radius: 0.7 },
-  camp: { name: 'Stronghold', icon: '🏚️', hp: 500, dmg: 0, range: 0, cd: 1, speed: 0, aggro: 0, radius: 1.4 },
+  gate: { name: 'Rift Gate', icon: '🌀', hp: 800, dmg: 14, range: 5, cd: 1.0, speed: 0, aggro: 5, radius: 1.3, ranged: true },
+  ghoul: { name: 'Hollow Ghoul', icon: '👹', hp: 70, dmg: 8, range: 0.9, cd: 1.1, speed: 2.4, aggro: 8, radius: 0.3 },
+  spitter: { name: 'Ash Spitter', icon: '🦂', hp: 55, dmg: 10, range: 5, cd: 1.6, speed: 2.0, aggro: 8, radius: 0.28, ranged: true },
+  brute: { name: 'Cinder Brute', icon: '👺', hp: 330, dmg: 24, range: 1.1, cd: 1.6, speed: 1.7, aggro: 8, radius: 0.45 },
+  sovereign: { name: 'The Night Sovereign', icon: '👑', hp: 2600, dmg: 46, range: 1.6, cd: 1.5, speed: 1.7, aggro: 9, radius: 0.7, aoe: 2 },
+  camp: { name: 'Stronghold', icon: '🏚️', hp: 500, dmg: 13, range: 6, cd: 1.3, speed: 0, aggro: 6, radius: 1.4, ranged: true },
 };
 
 export const TRAINABLE: UnitKind[] = ['swordsman', 'archer', 'knight'];
@@ -123,14 +123,14 @@ export const BLIGHT_RADIUS = 7;
 
 export interface CampDef {
   id: string; name: string; leader: string; color: number;
-  hp: number; guards: UnitKind[]; raid: UnitKind[];
+  hp: number; dmg: number; respawn: number; guards: UnitKind[]; raid: UnitKind[];
   lootGold: number; lootShards: number;
 }
 
 export const CAMPS: CampDef[] = [
-  { id: 'hollow', name: 'The Hollow Court', leader: 'Lady Vesper', color: 0xb04cff, hp: 500, guards: ['ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul'], raid: ['ghoul'], lootGold: 300, lootShards: 8 },
-  { id: 'ashen', name: 'The Ashen Brood', leader: 'Karg Cinder-Maw', color: 0xff5a2a, hp: 850, guards: ['ghoul', 'ghoul', 'ghoul', 'spitter', 'spitter', 'spitter', 'spitter', 'brute'], raid: ['ghoul', 'spitter', 'ghoul', 'brute'], lootGold: 600, lootShards: 15 },
-  { id: 'sovereign', name: 'The Night Sovereign', leader: 'Nyx-Athar', color: 0xff2a6a, hp: 1400, guards: ['sovereign', 'brute', 'brute', 'brute', 'spitter', 'spitter', 'spitter', 'spitter', 'ghoul', 'ghoul', 'ghoul', 'ghoul'], raid: ['brute', 'spitter', 'ghoul', 'spitter', 'brute'], lootGold: 1500, lootShards: 30 },
+  { id: 'hollow', name: 'The Hollow Court', leader: 'Lady Vesper', color: 0xb04cff, hp: 1500, dmg: 12, respawn: 45, guards: ['ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul'], raid: ['ghoul'], lootGold: 300, lootShards: 8 },
+  { id: 'ashen', name: 'The Ashen Brood', leader: 'Karg Cinder-Maw', color: 0xff5a2a, hp: 3600, dmg: 18, respawn: 28, guards: ['ghoul', 'ghoul', 'ghoul', 'ghoul', 'spitter', 'spitter', 'spitter', 'spitter', 'brute', 'brute'], raid: ['ghoul', 'spitter', 'ghoul', 'brute'], lootGold: 600, lootShards: 15 },
+  { id: 'sovereign', name: 'The Night Sovereign', leader: 'Nyx-Athar', color: 0xff2a6a, hp: 8000, dmg: 28, respawn: 20, guards: ['sovereign', 'brute', 'brute', 'brute', 'brute', 'spitter', 'spitter', 'spitter', 'spitter', 'spitter', 'ghoul', 'ghoul', 'ghoul', 'ghoul'], raid: ['brute', 'spitter', 'ghoul', 'spitter', 'brute'], lootGold: 1500, lootShards: 30 },
 ];
 
 // --- Trade ---

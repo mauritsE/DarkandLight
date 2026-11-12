@@ -232,7 +232,7 @@ export class Hud {
         <button data-act="selectAll">Select all <kbd>F</kbd></button></div><div class="items">`;
       h += this.trainButtons();
       h += `<button class="bbtn ${app.tool === 'beacon' ? 'on' : ''}" data-act="tool" data-t="beacon" data-tip="u:beacon" ${beacons >= MAX_BEACONS ? 'disabled' : ''}><span class="ic">🕯️</span><span class="nm">Beacon</span><span class="lock">${beacons}/${MAX_BEACONS}</span></button>`;
-      h += `</div><div class="col army muted" style="max-width:190px">${S.trainQ.length ? `Training ${UNITS[S.trainQ[0]].name}…<div class="bar"><i style="width:${(1 - S.trainT / TRAIN_TIME) * 100}%"></i></div>${S.trainQ.length > 1 ? `+${S.trainQ.length - 1} queued` : ''}`
+      h += `</div><div class="col army hint muted ${S.trainQ.length ? '' : 'idle'}">${S.trainQ.length ? `Training ${UNITS[S.trainQ[0]].name}…<div class="bar"><i style="width:${(1 - S.trainT / TRAIN_TIME) * 100}%"></i></div>${S.trainQ.length > 1 ? `+${S.trainQ.length - 1} queued` : ''}`
         : 'Right-click to move or attack. Units heal near the Rift Gate.'}</div>`;
     }
     this.set('bottombar', h);
@@ -309,13 +309,13 @@ export class Hud {
       const phase = sh.phase === 'docked' ? `<span class="ok">Docked — leaves in ${Math.ceil(sh.t)}s</span>` : sh.phase === 'arriving' ? 'Sailing in…' : sh.phase === 'leaving' ? 'Setting sail' : `At sea — back in ~${Math.ceil(sh.t / 10) * 10}s`;
       h += `<div class="ship" style="border-left-color:${col}"><b>⛵ ${m.name}</b> <span class="muted">· ${m.captain}</span><br>${phase}`;
       if (sh.phase === 'docked') {
-        h += `<table class="trade"><tr><th>Good</th><th>Have</th><th colspan="2">Sell for</th><th colspan="2">Buy for</th></tr>`;
+        h += `<table class="trade"><tr><th>Good</th><th>Have</th><th colspan="2">Sell (gold each)</th><th colspan="2">Buy (gold each)</th></tr>`;
         for (const k of GOOD_IDS) {
           const have = Math.floor(S.stock[k]), st = sh.stock[k] ?? 0, fav = (m.buys[k] ?? 0) >= 1;
           if (!have && !st) continue;
-          h += `<tr><td title="${GOODS[k].name}">${GOODS[k].icon}</td><td>${have}</td><td class="${fav ? 'ok' : ''}">${sellPrice(g, sh, k)}🪙</td>
+          h += `<tr><td title="${GOODS[k].name}">${GOODS[k].icon}</td><td>${have}</td><td class="${fav ? 'ok' : ''}">${sellPrice(g, sh, k)}g</td>
             <td><button data-act="sell" data-s="${si}" data-g="${k}" data-n="1" ${have ? '' : 'disabled'}>1</button><button data-act="sell" data-s="${si}" data-g="${k}" data-n="10" ${have ? '' : 'disabled'}>10</button></td>`;
-          h += st ? `<td>${buyPrice(g, sh, k)}🪙 <span class="muted">(${st})</span></td><td><button data-act="buy" data-s="${si}" data-g="${k}" data-n="1">1</button><button data-act="buy" data-s="${si}" data-g="${k}" data-n="10">10</button></td></tr>`
+          h += st ? `<td>${buyPrice(g, sh, k)}g <span class="muted">×${st}</span></td><td><button data-act="buy" data-s="${si}" data-g="${k}" data-n="1">1</button><button data-act="buy" data-s="${si}" data-g="${k}" data-n="10">10</button></td></tr>`
             : '<td class="muted">—</td><td></td></tr>';
         }
         h += '</table>';

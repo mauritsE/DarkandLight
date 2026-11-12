@@ -285,8 +285,8 @@ export function unitModel(kind: UnitKind): THREE.Group {
       break;
     case 'archer':
       g.box(S.leather, 0.09, 0.22, 0.09, -0.07, 0, 0).box(S.leather, 0.09, 0.22, 0.09, 0.07, 0, 0);
-      g.box(M.green, 0.26, 0.3, 0.16, 0, 0.22, 0).sphere(S.skin, 0.095, 0, 0.61, 0);
-      g.cone(M.green, 0.14, 0.2, 0, 0.64, 0, 6);
+      g.box(S.ranger, 0.26, 0.3, 0.16, 0, 0.22, 0).sphere(S.skin, 0.095, 0, 0.61, 0);
+      g.cone(S.ranger, 0.14, 0.2, 0, 0.64, 0, 6);
       g.add(S.leather, new THREE.TorusGeometry(0.2, 0.015, 4, 8, PI), 0.17, 0.4, 0.12, PI / 2, 0, -PI / 2);
       g.box(S.leather, 0.07, 0.26, 0.07, 0, 0.26, -0.12, 0, 0, 0.3);
       break;
@@ -333,5 +333,7 @@ export function unitModel(kind: UnitKind): THREE.Group {
     default:
       break;
   }
-  return g.build();
+  const grp = g.build();
+  if (kind !== 'beacon') grp.scale.setScalar(1.45);
+  return grp;
 }

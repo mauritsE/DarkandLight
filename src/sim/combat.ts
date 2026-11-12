@@ -149,7 +149,8 @@ function spawnRaid(g: Game) {
   if (!gate || !live.length) return;
   const ci = S.raidCount < 3 ? live[0] : live[Math.floor(g.rand() * live.length)];
   const cd = CAMPS[ci], site = g.world.campSites[ci];
-  const n = Math.min(3 + Math.floor(S.raidCount * 0.8), 12);
+  // raids grow with time, but their ceiling follows how far the war has come
+  const n = Math.min(3 + Math.floor(S.raidCount * 0.5), 6 + 2 * (S.camps.length - live.length));
   for (let i = 0; i < n; i++) {
     const e = g.spawnNear(cd.raid[i % cd.raid.length], 1, site.x + 0.5 + (g.rand() - 0.5) * 4, site.z + 2.5 + g.rand() * 2, ci);
     e.raid = true; e.order = ORDER.AttackMove; e.ox = gate.x; e.oz = gate.z;
@@ -209,7 +210,7 @@ export function tickCombat(g: Game, dt: number) {
     }
     if (S.camps.some((c) => c.alive)) {
       S.raidTimer -= dt;
-      if (S.raidTimer <= 0) { spawnRaid(g); S.raidTimer = Math.max(110, 175 - S.raidCount * 4) + g.rand() * 30; }
+      if (S.raidTimer <= 0) { spawnRaid(g); S.raidTimer = 165 + g.rand() * 40; }
     }
   }
 
@@ -222,8 +223,8 @@ export function tickCombat(g: Game, dt: number) {
     }
     cs.respawn -= dt;
     if (cs.respawn <= 0) {
-      cs.respawn = 45;
       const cd = CAMPS[ci], site = W.campSites[ci];
+      cs.respawn = cd.respawn;
       const have = ents.filter((e) => e.camp === ci && !e.raid && e.kind !== 'camp');
       if (have.length < cd.guards.length) {
         const need = cd.guards.filter((k) => k !== 'sovereign');
@@ -238,7 +239,6 @@ export function tickCombat(g: Game, dt: number) {
     if (e.hp <= 0 || e.down) continue;
     const d = UNITS[e.kind];
     e.cd -= dt; e.think -= dt; e.moving = false;
-    if (e.kind === 'camp') continue;
     if (e.think <= 0) { e.think = 0.3 + g.rand() * 0.15; acquire(g, e); }
     const t = e.tgt ? g.entById.get(e.tgt) : undefined;
     if (t && t.hp > 0 && !t.down) {
@@ -248,8 +248,11 @@ export function tickCombat(g: Game, dt: number) {
         if (e.cd <= 0) {
           e.cd = d.cd; e.atkT = S.time;
           if (d.ranged) {
-            S.projectiles.push({ id: S.nextId++, x: e.x, z: e.z, y: e.kind === 'beacon' || e.kind === 'gate' ? 2.2 : 0.7, tgt: t.id, dmg: d.dmg, team: e.team, from: e.id });
+            S.projectiles.push({ id: S.nextId++, x: e.x, z: e.z, y: isStatic(e) ? 2.4 : 0.7, tgt: t.id, dmg: e.kind === 'camp' ? CAMPS[e.camp].dmg : d.dmg, team: e.team, from: e.id });
             g.events.push({ t: 'shot', x: e.x, z: e.z, team: e.team });
+          } else if (d.aoe) {
+            // sweeping blow: everyone near the victim is struck
+            for (const o of ents) if (o.team !== e.team && Math.hypot(o.x - t.x, o.z - t.z) <= d.aoe) damage(g, o, d.dmg, e);
           } else damage(g, t, d.dmg, e);
         }
       } else if (d.speed > 0) stepToward(g, e, t.x, t.z, dt);

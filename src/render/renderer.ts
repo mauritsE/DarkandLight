@@ -62,9 +62,9 @@ export class Renderer {
   private walkers: Walker[] = [];
   private walkerMesh: THREE.InstancedMesh;
   private warnMat = new THREE.SpriteMaterial({ map: warnTexture(), depthTest: false });
-  private barMat = { bg: new THREE.SpriteMaterial({ color: 0x1a1020, depthTest: false }), good: new THREE.SpriteMaterial({ color: 0x7dff8a, depthTest: false }), bad: new THREE.SpriteMaterial({ color: 0xff4a5a, depthTest: false }) };
-  private ringGeo = new THREE.RingGeometry(0.34, 0.44, 20).rotateX(-Math.PI / 2);
-  private ringMat = new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.95, depthTest: false });
+  private barMat = { bg: new THREE.SpriteMaterial({ color: 0x1a1020, depthTest: false }), good: new THREE.SpriteMaterial({ color: 0x46b85a, depthTest: false }), bad: new THREE.SpriteMaterial({ color: 0xc8303e, depthTest: false }) };
+  private ringGeo = new THREE.RingGeometry(0.4, 0.46, 24).rotateX(-Math.PI / 2);
+  private ringMat = new THREE.MeshBasicMaterial({ color: 0xb89a48, transparent: true, opacity: 0.9, depthTest: false });
   private projGeo = new THREE.SphereGeometry(0.09, 6, 5);
   private projMat = [new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.4, 1) }), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 3, 0.9) })];
   private portalMat: THREE.ShaderMaterial;
@@ -165,7 +165,7 @@ export class Renderer {
     this.terrain.waterU.uFogColor.value.copy(fog.color); this.terrain.waterU.uFogDensity.value = fog.density;
     (this.portalMat.uniforms.uA.value as THREE.Color).setHex(dark ? 0xffd27a : 0x9a5cff);
     (this.portalMat.uniforms.uB.value as THREE.Color).setHex(dark ? 0x7a4a10 : 0x2a0a55);
-    this.gateLight.intensity = dark ? 60 : 0;
+    this.gateLight.intensity = dark ? 9 : 0;
     if (!dark) this.selected.clear();
   }
 
@@ -337,14 +337,14 @@ export class Renderer {
   private makeUnit(e: Entity): UView {
     const g = new THREE.Group(), d = UNITS[e.kind];
     let body: THREE.Group, h = 1;
-    if (e.kind === 'camp') { body = campModel(e.camp); h = 4.2 + e.camp; const l = new THREE.PointLight(CAMPS[e.camp].color, 50, 18, 1.5); l.position.y = 3; g.add(l); }
+    if (e.kind === 'camp') { body = campModel(e.camp); h = 4.2 + e.camp; const l = new THREE.PointLight(CAMPS[e.camp].color, 30, 18, 1.5); l.position.y = 3; g.add(l); }
     else if (e.kind === 'gate') { body = new THREE.Group(); h = 3.3; }
-    else { body = unitModel(e.kind); h = e.kind === 'beacon' ? 3 : e.kind === 'sovereign' ? 2.5 : e.kind === 'brute' ? 1.4 : 1.0; }
+    else { body = unitModel(e.kind); h = e.kind === 'beacon' ? 3 : e.kind === 'sovereign' ? 3.4 : e.kind === 'brute' ? 1.9 : 1.35; }
     g.add(body);
     const w = d.speed === 0 ? 1.6 : 0.3 + d.radius;
     const barBg = new THREE.Sprite(this.barMat.bg), bar = new THREE.Sprite(e.team === 0 ? this.barMat.good : this.barMat.bad);
     barBg.center.set(0, 0.5); bar.center.set(0, 0.5);
-    barBg.scale.set(w, 0.1, 1); bar.scale.set(w, 0.07, 1);
+    barBg.scale.set(w, 0.085, 1); bar.scale.set(w, 0.055, 1);
     barBg.position.set(0, h, 0); bar.position.set(0, h, 0);
     barBg.userData.w = w; barBg.renderOrder = 10; bar.renderOrder = 11;
     g.add(barBg, bar);
