@@ -46,6 +46,7 @@ export interface Entity {
   face: number;
   moving?: boolean;
   atkT?: number; // time of last attack (for animation)
+  hitT?: number; // time this unit last took damage
   down?: boolean; // gate breached
 }
 

@@ -1,4 +1,4 @@
-import { ARMY_PER_BARRACKS, CAMPS, CHAPEL_HEAL, CHAPEL_RANGE, MAX_BEACONS, SPIRE_DMG, SPIRE_RANGE, TRAIN_TIME, UNITS, UnitKind } from './defs';
+import { ARMY_PER_BARRACKS, CAMPS, CHAPEL_HEAL, CHAPEL_RANGE, MAX_BEACONS, POST_LEASH, REST_DELAY, REST_HEAL, SPIRE_DMG, SPIRE_RANGE, TRAIN_TIME, UNITS, UnitKind } from './defs';
 import type { Game } from './game';
 import { findPath, los, nearestWalk } from './path';
 import { Entity, ORDER } from './state';
@@ -62,6 +62,7 @@ export function orderMove(g: Game, ids: number[], x: number, z: number) {
     let tx = x + ox, tz = z + oz;
     if (!g.world.isWalk(Math.floor(tx), Math.floor(tz))) { tx = x; tz = z; }
     e.order = ORDER.Move; e.ox = tx; e.oz = tz; e.tgt = 0; e.path = null;
+    e.hx = tx; e.hz = tz; // this spot becomes the soldier's post
   });
 }
 /** March to a spot, fighting anything met on the way. */
@@ -79,7 +80,7 @@ export function orderAttack(g: Game, ids: number[], targetId: number) {
 
 function damage(g: Game, t: Entity, dmg: number, from: Entity | undefined) {
   if (t.hp <= 0 || t.down) return;
-  t.hp -= dmg;
+  t.hp -= dmg; t.hitT = g.state.time;
   g.events.push({ t: 'hit', x: t.x, z: t.z, team: t.team });
   if (from && from.hp > 0 && !t.tgt && t.order !== ORDER.Move && !isStatic(t)) t.tgt = from.id;
   // guards rally when their stronghold is attacked
@@ -280,6 +281,7 @@ export function tickCombat(g: Game, dt: number) {
     if (e.hp <= 0 || e.down) continue;
     const d = UNITS[e.kind];
     e.cd -= dt; e.think -= dt; e.moving = false;
+    if (e.team === 0 && d.speed > 0 && S.time - (e.hitT ?? -99) > REST_DELAY) e.hp = Math.min(d.hp, e.hp + REST_HEAL * dt);
     if (e.think <= 0) { e.think = 0.3 + g.rand() * 0.15; acquire(g, e); }
     // a raider that has wandered for five minutes without finding a fight slinks home
     if (e.raid && !e.tgt && S.time - (e.raidT ?? S.time) > 300) { e.hp = -1e9; continue; }
@@ -305,6 +307,12 @@ export function tickCombat(g: Game, dt: number) {
         else stepToward(g, e, e.ox, e.oz, dt);
       } else if (e.team === 1 && e.camp >= 0 && !e.raid && Math.hypot(e.hx - e.x, e.hz - e.z) > 1.5) {
         stepToward(g, e, e.hx, e.hz, dt);
+      } else if (e.team === 0) {
+        // after chasing something off, soldiers walk back to their post (where they can heal);
+        // if the fight carried them far away, they hold the new ground instead
+        const d = Math.hypot(e.hx - e.x, e.hz - e.z);
+        if (d > POST_LEASH) { e.hx = e.x; e.hz = e.z; }
+        else if (d > 2.5) stepToward(g, e, e.hx, e.hz, dt);
       }
     }
   }

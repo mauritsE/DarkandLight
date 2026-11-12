@@ -142,6 +142,21 @@ describe('orders and difficulty', () => {
     run(g, 60);
     expect(a.order).toBe(ORDER.Idle);
   });
+  it('soldiers return to their post after a chase, and recover when left alone', () => {
+    const g = rich();
+    const s = g.world.start;
+    const a = g.spawnNear('knight', 0, s.x + 0.5, s.z + 4.5, -1);
+    const post = { x: a.x, z: a.z };
+    const foe = g.spawnNear('ghoul', 1, s.x + 5.5, s.z + 4.5, -1);
+    foe.hx = foe.x; foe.hz = foe.z; foe.order = ORDER.Move; foe.ox = foe.x; foe.oz = foe.z; // stands still
+    run(g, 8);
+    expect(g.entById.has(foe.id)).toBe(false); // chased down
+    const hurt = a.hp;
+    expect(hurt).toBeLessThan(UNITS.knight.hp);
+    run(g, 40);
+    expect(Math.hypot(a.x - post.x, a.z - post.z)).toBeLessThan(3); // back at the post
+    expect(a.hp).toBeGreaterThan(hurt); // resting heals
+  });
   it('peaceful mode never raids', () => {
     const g = rich(3, 0);
     placeNear(g, 'gate', g.world.start.x, g.world.start.z);
