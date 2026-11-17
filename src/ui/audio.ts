@@ -113,5 +113,9 @@ export class Sound {
   horn() { this.tone(98, 1.4, 'sawtooth', 0.12, true, 1.02); setTimeout(() => this.tone(130.8, 1.2, 'sawtooth', 0.1, true), 500); }
   order() { this.tone(520, 0.06, 'square', 0.03); }
   boom() { this.noise(1.2, 0.5, 600, 40, 'lowpass'); this.tone(60, 1.0, 'sine', 0.3, false, 0.5); }
+  burst() { this.noise(0.5, 0.4, 3000, 150, 'lowpass'); this.tone(880, 0.5, 'sine', 0.14, true, 0.25); }
+  heal() { [523, 659, 784].forEach((f, i) => setTimeout(() => this.tone(f, 0.5, 'sine', 0.08, true), i * 70)); }
+  rally() { this.tone(196, 0.7, 'sawtooth', 0.1, true, 1.5); setTimeout(() => this.tone(294, 0.8, 'sawtooth', 0.1, true), 220); }
+  thunder() { this.noise(1.6, 0.35, 220, 40, 'lowpass'); }
   victory() { [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => setTimeout(() => this.tone(f, 1.2, 'triangle', 0.12, true), i * 160)); }
 }

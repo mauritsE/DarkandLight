@@ -41,6 +41,9 @@ export interface Entity {
   gx: number; gz: number; // goal the current path was built for
   hx: number; hz: number; // home
   camp: number; // camp index or -1
+  guard?: boolean; // defends a stronghold or lair and returns to it
+  lair?: number; // lair index this creature belongs to
+  sp?: number; // cooldown of a special action (warlock mending)
   raid?: boolean;
   raidT?: number; // when the raid set out
   face: number;
@@ -65,6 +68,9 @@ export interface CampState { alive: boolean; entId: number; respawn: number; wel
 
 export interface ShardNode { x: number; z: number; ready: boolean; t: number; prog: number }
 export interface Contract { merchant: number; good: Good; qty: number; reward: number; t: number }
+
+export interface LairState { x: number; z: number; alive: boolean; entId: number; relic: string }
+export interface AbilityState { burst: number; mend: number; rally: number; rallyT: number }
 
 export interface TradeOrder { mode: 'none' | 'sell' | 'buy'; level: number }
 
@@ -104,7 +110,11 @@ export interface GameState {
   nodes: ShardNode[];
   contracts: Contract[];
   contractT: number;
-  stats: { trades: number; kills: number; trained: number; visitedDark: boolean; t2: number; t3: number; contracts: number; harvested: number };
+  lairs: LairState[];
+  relics: string[];
+  abil: AbilityState; // cooldowns left, and time left on the rally
+  explored: string; // one char per tile: '1' once light has reached it
+  stats: { trades: number; kills: number; trained: number; visitedDark: boolean; t2: number; t3: number; contracts: number; harvested: number; lairs: number; casts: number };
   won: boolean;
 }
 
@@ -121,6 +131,10 @@ export type GameEvent =
   | { t: 'campDown'; camp: number }
   | { t: 'upgrade'; id: number }
   | { t: 'trade' }
+  | { t: 'burst'; x: number; z: number }
+  | { t: 'mend'; x: number; z: number; team: number }
+  | { t: 'rally' }
+  | { t: 'relic'; id: string; x: number; z: number }
   | { t: 'prod'; id: number; good: Good; n: number }
   | { t: 'harvest'; x: number; z: number; n: number }
   | { t: 'loot'; x: number; z: number; n: number }

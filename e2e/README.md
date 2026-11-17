@@ -14,7 +14,7 @@ npm run dev -- --port 5173 --strictPort
 node e2e/controls.cjs /tmp/shots
 ```
 
-Runs ~105 checks of every control, panel, shortcut and touch gesture (about 3 minutes).
+Runs 120 checks of every control, panel, shortcut and touch gesture (about 3 minutes).
 
 ```bash
 node e2e/campaign.cjs /tmp/shots 2024

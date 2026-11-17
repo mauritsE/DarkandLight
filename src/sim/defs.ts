@@ -100,7 +100,7 @@ export const TIERS = [
 
 // --- Units ---
 export type UnitKind =
-  | 'swordsman' | 'archer' | 'knight' | 'beacon' | 'gate'
+  | 'swordsman' | 'archer' | 'knight' | 'beacon' | 'gate' | 'wraith' | 'warlock' | 'lair'
   | 'ghoul' | 'spitter' | 'brute' | 'sovereign' | 'camp';
 
 export interface UnitDef {
@@ -119,8 +119,11 @@ export const UNITS: Record<UnitKind, UnitDef> = {
   ghoul: { name: 'Hollow Ghoul', icon: '👹', hp: 70, dmg: 8, range: 0.9, cd: 1.1, speed: 2.4, aggro: 8, radius: 0.3 },
   spitter: { name: 'Ash Spitter', icon: '🦂', hp: 55, dmg: 10, range: 5, cd: 1.6, speed: 2.0, aggro: 8, radius: 0.28, ranged: true },
   brute: { name: 'Cinder Brute', icon: '👺', hp: 330, dmg: 24, range: 1.1, cd: 1.6, speed: 1.7, aggro: 8, radius: 0.45 },
-  sovereign: { name: 'The Night Sovereign', icon: '👑', hp: 2600, dmg: 46, range: 1.6, cd: 1.5, speed: 1.7, aggro: 9, radius: 0.7, aoe: 2 },
+  sovereign: { name: 'The Night Sovereign', icon: '👑', hp: 3000, dmg: 46, range: 1.6, cd: 1.5, speed: 1.7, aggro: 9, radius: 0.7, aoe: 2 },
+  wraith: { name: 'Gloom Wraith', icon: '👻', desc: 'Fast and frail. Slips past the front line to hunt archers.', hp: 60, dmg: 12, range: 0.9, cd: 0.8, speed: 3.5, aggro: 9, radius: 0.28 },
+  warlock: { name: 'Dusk Warlock', icon: '🧙', desc: 'Hurls bolts and mends the wounds of nearby creatures. Kill it first.', hp: 75, dmg: 9, range: 6, cd: 1.8, speed: 1.9, aggro: 8, radius: 0.3, ranged: true },
   camp: { name: 'Stronghold', icon: '🏚️', hp: 500, dmg: 13, range: 6, cd: 1.3, speed: 0, aggro: 6, radius: 1.4, ranged: true },
+  lair: { name: 'Creature Lair', icon: '🕳️', hp: 450, dmg: 0, range: 0, cd: 1, speed: 0, aggro: 0, radius: 1.0 },
 };
 
 export const TRAINABLE: UnitKind[] = ['swordsman', 'archer', 'knight'];
@@ -152,10 +155,46 @@ export interface CampDef {
 }
 
 export const CAMPS: CampDef[] = [
-  { id: 'hollow', name: 'The Hollow Court', leader: 'Lady Vesper', color: 0xb04cff, hp: 1500, dmg: 12, respawn: 45, guards: ['ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul'], raid: ['ghoul'], lootGold: 300, lootShards: 8 },
-  { id: 'ashen', name: 'The Ashen Brood', leader: 'Karg Cinder-Maw', color: 0xff5a2a, hp: 3600, dmg: 18, respawn: 28, guards: ['ghoul', 'ghoul', 'ghoul', 'ghoul', 'spitter', 'spitter', 'spitter', 'spitter', 'brute', 'brute'], raid: ['ghoul', 'spitter', 'ghoul', 'brute'], lootGold: 600, lootShards: 15 },
-  { id: 'sovereign', name: 'The Night Sovereign', leader: 'Nyx-Athar', color: 0xff2a6a, hp: 8000, dmg: 28, respawn: 20, guards: ['sovereign', 'brute', 'brute', 'brute', 'brute', 'spitter', 'spitter', 'spitter', 'spitter', 'spitter', 'ghoul', 'ghoul', 'ghoul', 'ghoul'], raid: ['brute', 'spitter', 'ghoul', 'spitter', 'brute'], lootGold: 1500, lootShards: 30 },
+  { id: 'hollow', name: 'The Hollow Court', leader: 'Lady Vesper', color: 0xb04cff, hp: 1900, dmg: 12, respawn: 45, guards: ['ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul', 'ghoul'], raid: ['ghoul'], lootGold: 300, lootShards: 8 },
+  { id: 'ashen', name: 'The Ashen Brood', leader: 'Karg Cinder-Maw', color: 0xff5a2a, hp: 5000, dmg: 18, respawn: 28, guards: ['ghoul', 'ghoul', 'ghoul', 'ghoul', 'spitter', 'spitter', 'spitter', 'warlock', 'brute', 'brute'], raid: ['ghoul', 'spitter', 'ghoul', 'brute'], lootGold: 600, lootShards: 15 },
+  { id: 'sovereign', name: 'The Night Sovereign', leader: 'Nyx-Athar', color: 0xff2a6a, hp: 9500, dmg: 28, respawn: 20, guards: ['sovereign', 'brute', 'brute', 'brute', 'brute', 'spitter', 'spitter', 'spitter', 'warlock', 'warlock', 'wraith', 'wraith', 'ghoul', 'ghoul'], raid: ['brute', 'spitter', 'wraith', 'spitter', 'brute', 'wraith'], lootGold: 1500, lootShards: 30 },
 ];
+
+/** Guards of the smaller lairs, from the ones nearest your Keep to the farthest. */
+export const LAIR_GUARDS: UnitKind[][] = [
+  ['ghoul', 'ghoul', 'ghoul'],
+  ['ghoul', 'ghoul', 'spitter', 'spitter'],
+  ['wraith', 'wraith', 'ghoul', 'ghoul'],
+  ['brute', 'warlock', 'spitter', 'ghoul'],
+  ['brute', 'brute', 'warlock', 'wraith', 'wraith'],
+];
+export const LAIR_LOOT = { gold: 150, shards: 3 };
+export const GATE_MIN_LAIR_DIST = 13.5;
+
+export type RelicId = 'ember' | 'aegis' | 'boots' | 'font' | 'prism';
+export const RELICS: Record<RelicId, { name: string; icon: string; desc: string }> = {
+  ember: { name: 'Ember Heart', icon: '🔥', desc: 'Your soldiers deal 15% more damage.' },
+  aegis: { name: 'Dawn Aegis', icon: '🛡️', desc: 'Your soldiers have 20% more health.' },
+  boots: { name: "Wayfarer's Sigil", icon: '🥾', desc: 'Your soldiers move 20% faster.' },
+  font: { name: 'Gate Font', icon: '⛲', desc: 'The Rift Gate mends itself four times as fast and heals soldiers near it twice as fast.' },
+  prism: { name: 'Shard Prism', icon: '💠', desc: 'Crystals and slain creatures yield one more shard, and light powers recharge 30% faster.' },
+};
+export const RELIC_IDS = Object.keys(RELICS) as RelicId[];
+
+export type AbilityId = 'burst' | 'mend' | 'rally';
+export const ABILITIES: Record<AbilityId, { name: string; icon: string; key: string; desc: string; shards: number; cd: number; radius: number; targeted: boolean }> = {
+  burst: { name: 'Radiant Burst', icon: '☀️', key: 'Z', desc: 'Call down a burst of light: 55 damage to every creature in the circle.', shards: 2, cd: 25, radius: 3.2, targeted: true },
+  mend: { name: 'Mending Light', icon: '💚', key: 'V', desc: 'Restore 60% health to your soldiers in the circle.', shards: 1, cd: 30, radius: 4, targeted: true },
+  rally: { name: 'Rallying Cry', icon: '📯', key: 'T', desc: 'For 12 seconds all your soldiers move and strike 25% faster and harder.', shards: 1, cd: 60, radius: 0, targeted: false },
+};
+export const ABILITY_IDS = Object.keys(ABILITIES) as AbilityId[];
+export const BURST_DMG = 55;
+export const MEND_FRACTION = 0.6;
+export const RALLY_TIME = 12;
+export const RALLY_BONUS = 0.25;
+
+/** How far each source of light pushes back the darkness of the Dark World (tiles). */
+export const SIGHT = { soldier: 6.5, knight: 7.5, gate: 10, beacon: 9, building: 4.5, chapel: 8, spire: 11, well: 7 };
 
 // --- Trade ---
 export interface MerchantDef {

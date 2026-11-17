@@ -23,6 +23,8 @@ export const QUESTS: Quest[] = [
     done: (g) => g.state.stats.trained >= 5 },
   { title: 'Shards in the Dark', text: 'Pink crystals glow on the dark island. Stand soldiers beside one to harvest its Umbral Shards.', reward: 200,
     done: (g) => g.state.stats.harvested > 0 },
+  { title: 'Relic Hunter', text: 'Creature lairs hide across the dark island. Explore, destroy one, and claim the relic inside.', reward: 250,
+    done: (g) => g.state.stats.lairs > 0 },
   { title: 'Break the Court', text: 'Lead your soldiers in the Dark World and destroy the stronghold of the Hollow Court.', reward: 400,
     done: (g) => !g.state.camps[0].alive },
   { title: 'Light from Shadow', text: 'Build a Lumen Spire to burn shards into light, and see a home rise to Luminary rank.', reward: 500,

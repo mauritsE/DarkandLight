@@ -1,5 +1,6 @@
 import './ui/style.css';
-import { BUILDINGS, BuildingId, CAMPS, DIFFICULTY, GOODS, ROAD_COST, UNITS } from './sim/defs';
+import { ABILITIES, AbilityId, BUILDINGS, BuildingId, CAMPS, DIFFICULTY, GOODS, ROAD_COST, UNITS } from './sim/defs';
+import { canCast, cast } from './sim/dark';
 import { Game } from './sim/game';
 import { canPlaceBeacon, orderAttack, orderAttackMove, orderMove, placeBeacon } from './sim/combat';
 import { N } from './sim/world';
@@ -23,10 +24,11 @@ const newSeed = () => { if (urlSeed > 0 && !seedUsed) { seedUsed = true; return 
 
 const app: App = {
   game: Game.create(newSeed()),
-  renderer, sound, dark: false, tool: null, speed: 1, charge: false,
+  renderer, sound, dark: false, tool: null, speed: 1, charge: false, casting: null,
   setTool(t) {
     if (t && t !== 'road' && t !== 'demolish' && t !== 'beacon' && !app.game.unlocked(t)) return;
     app.tool = t; renderer.setPreview(t);
+    if (t) stopCast();
     if (t) hud.closePanel(); else hud.hint('');
     canvas.style.cursor = t ? 'crosshair' : '';
   },
@@ -41,7 +43,7 @@ const app: App = {
       app.dark = to; app.setTool(null);
       document.body.classList.toggle('dark', to);
       renderer.setDark(to);
-      app.charge = false;
+      app.charge = false; stopCast();
       if (to) {
         if (!app.game.state.stats.visitedDark) hud.toast('Pink shard crystals glow across the dark island. Stand soldiers beside one to harvest it.', 'info');
         app.game.state.stats.visitedDark = true;
@@ -64,6 +66,15 @@ const app: App = {
     localStorage.setItem('dal-gfx', low ? 'low' : 'high');
     return low;
   },
+  startCast(id) {
+    if (!app.dark) return;
+    if (app.casting === id) { stopCast(); return; }
+    const why = canCast(app.game, id);
+    if (why) { hud.toast(why, 'warn'); sound.error(); return; }
+    if (!ABILITIES[id].targeted) { doCast(id, 0, 0); return; }
+    app.setTool(null);
+    app.casting = id; canvas.style.cursor = 'crosshair'; sound.click();
+  },
   retreat() {
     const g = app.game.gateEnt(), ids = [...renderer.selected];
     if (!g || !ids.length) return;
@@ -71,6 +82,17 @@ const app: App = {
     renderer.moveMarker(g.x + 2.2, g.z + 2.2, false); sound.order();
   },
 };
+function stopCast() {
+  if (!app.casting) return;
+  app.casting = null; canvas.style.cursor = app.tool ? 'crosshair' : '';
+  renderer.setRange(0, 0, 0);
+}
+function doCast(id: AbilityId, x: number, z: number) {
+  const why = cast(app.game, id, x, z);
+  if (why) { hud.toast(why, 'warn'); sound.error(); return false; }
+  stopCast();
+  return true;
+}
 const hud = new Hud(app);
 renderer.setGame(app.game);
 if (localStorage.getItem('dal-gfx') === 'low' || new URLSearchParams(location.search).get('gfx') === 'low') renderer.setQuality(true);
@@ -172,7 +194,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (app.tool) {
     drag.kind = 'paint';
     applyTool(e.clientX, e.clientY, false);
-  } else if (app.dark && e.pointerType !== 'touch') drag.kind = 'box';
+  } else if (app.dark && e.pointerType !== 'touch' && !app.casting) drag.kind = 'box';
 });
 canvas.addEventListener('pointermove', (e) => {
   mouse.x = e.clientX; mouse.y = e.clientY;
@@ -216,12 +238,18 @@ canvas.addEventListener('pointerup', (e) => {
   if (d.moved || d.kind === 'paint') return;
   // --- clicks ---
   if (d.button === 2) {
+    if (app.casting) { stopCast(); return; }
     if (app.tool) { app.setTool(null); return; }
     if (app.dark) command(e.clientX, e.clientY);
     else hud.closePanel();
     return;
   }
   if (d.button !== 0) return;
+  if (app.dark && app.casting) {
+    const p = renderer.screenToGround(e.clientX, e.clientY);
+    if (p) doCast(app.casting, p.x, p.z);
+    return;
+  }
   if (app.dark) {
     const own = renderer.entityAt(e.clientX, e.clientY, 0);
     const ownE = g.entById.get(own);
@@ -269,7 +297,7 @@ window.addEventListener('keydown', (e) => {
   keys.add(k);
   if (!started) return;
   if (k === 'tab' || k === ' ') { e.preventDefault(); app.toggleWorld(); }
-  else if (k === 'escape') { if (app.tool) app.setTool(null); else if (renderer.selected.size) renderer.selected.clear(); else hud.closePanel(); }
+  else if (k === 'escape') { if (app.casting) stopCast(); else if (app.tool) app.setTool(null); else if (renderer.selected.size) renderer.selected.clear(); else hud.closePanel(); }
   else if (k === 'p') app.setSpeed(app.speed ? 0 : 1);
   else if (k === '1') app.setSpeed(1);
   else if (k === '2') app.setSpeed(2);
@@ -279,6 +307,9 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f' && app.dark) app.selectAll();
   else if (k === 'c' && app.dark) app.charge = !app.charge;
   else if (k === 'g' && app.dark) app.retreat();
+  else if (k === 'z' && app.dark) app.startCast('burst');
+  else if (k === 'v' && app.dark) app.startCast('mend');
+  else if (k === 't' && app.dark) app.startCast('rally');
   else if (k === 'l') document.querySelector<HTMLElement>('[data-act="ledger"]')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
   else if (k === 'h') { const s = app.game.world.start; renderer.focus(s.x, s.z); }
 });
@@ -337,6 +368,8 @@ function loop(now: number) {
         hud.hint(text, mouse.x, mouse.y, ok);
       } else hud.hint('');
     }
+    // aiming a light power: show its circle under the cursor
+    if (app.casting) { const p = renderer.screenToGround(mouse.x, mouse.y); if (p) renderer.setRange(p.x, p.z, ABILITIES[app.casting].radius); }
     saveT += dt;
     if (saveT > 20) { saveT = 0; save(); }
   }
@@ -369,7 +402,11 @@ function handleEvents() {
       case 'hit': if (app.dark) sound.hit(); break;
       case 'shot': if (app.dark) sound.shot(); break;
       case 'die': if (app.dark) sound.die(); break;
-      case 'raid': sound.horn(); break;
+      case 'raid': sound.horn(); sound.thunder(); break;
+      case 'burst': sound.burst(); break;
+      case 'mend': if (ev.team === 0) sound.heal(); break;
+      case 'rally': sound.rally(); break;
+      case 'relic': sound.quest(); break;
       case 'breach': sound.boom(); break;
       case 'campDown': sound.boom(); sound.quest(); break;
       case 'upgrade': sound.upgrade(); break;

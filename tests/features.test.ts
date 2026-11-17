@@ -12,8 +12,14 @@ function run(g: Game, seconds: number, keepConnected = true) {
     g.tick(0.1);
   }
 }
-function rich(seed = 42, difficulty = 1) {
+/** A wealthy test game. Lairs are removed unless asked for, so their guards don't wander into unrelated tests. */
+function rich(seed = 42, difficulty = 1, lairs = false) {
   const g = Game.create(seed, difficulty);
+  if (!lairs) {
+    g.state.entities = g.state.entities.filter((e) => e.lair === undefined);
+    g.entById.clear(); for (const e of g.state.entities) g.entById.set(e.id, e);
+    g.state.lairs = [];
+  }
   g.state.peakPop = 300; g.state.gold = 50000;
   for (const k in g.state.stock) (g.state.stock as Record<string, number>)[k] = 60;
   return g;

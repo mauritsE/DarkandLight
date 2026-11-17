@@ -33,11 +33,15 @@ Then open the printed URL. `npm run build` makes a static bundle in `dist/`, `np
 **Dark World — fight**
 
 - Raise the **Rift Gate**, then press <kbd>Tab</kbd> (or the round button) to cross over. Your city appears as a ghost; only the gate is solid in both worlds.
+- **The dark is dark.** The island starts unexplored. Your soldiers, the gate, beacons and the ghost of your city push the darkness back; creatures outside your light are hidden, and powers can only be cast where your light reaches.
 - Train soldiers at a **Barracks** (each supports 6). They appear at the gate. Drag to select, right-click to move or attack.
 - Strongholds send **raids** against your gate. If it is breached, raiders plunder your treasury. Light Beacons and a garrison keep it safe.
 - Your city reaches across the Rift: a lit **Lumen Spire** strikes dark creatures near it, and soldiers heal near a **Chapel**. Where you build matters for defence.
 - **Shard crystals** glow pink across the dark island. Stand soldiers beside one to harvest it; they regrow after a few minutes.
 - <kbd>C</kbd> (or Shift + right-click) orders a **charge**: march and fight everything on the way. <kbd>G</kbd> sends the selection back to the gate to heal.
+- **Light powers** spend shards: <kbd>Z</kbd> Radiant Burst (area damage), <kbd>V</kbd> Mending Light (area heal), <kbd>T</kbd> Rallying Cry (the whole army faster and stronger for 12 seconds). Each has a cooldown.
+- **Creature lairs** are scattered across the island, weaker near home and nastier far away. Destroy one to claim its **relic**, a permanent bonus such as more damage, more health or a faster-mending gate.
+- Beyond ghouls, spitters and brutes, watch for **wraiths** (fast, they dive for your archers) and **warlocks** (they heal other creatures — kill them first).
 - Destroying a stronghold lifts its blight from the Light World and yields **Umbral Shards**, which power Lumen Spires and Dawnblade champions. Raze all three to win.
 
 ## Controls
@@ -50,6 +54,7 @@ Then open the printed URL. `npm run build` makes a static bundle in `dist/`, `np
 | Road / demolish tool | <kbd>R</kbd> / <kbd>X</kbd> |
 | Cancel, deselect | <kbd>Esc</kbd> or right-click |
 | Select all / charge / retreat | <kbd>F</kbd> / <kbd>C</kbd> / <kbd>G</kbd> (Dark World) |
+| Light powers | <kbd>Z</kbd> burst, <kbd>V</kbd> mend, <kbd>T</kbd> rally (Dark World) |
 | Ledger | <kbd>L</kbd> |
 | Game speed | <kbd>P</kbd> pause, <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> |
 | Back to the Keep | <kbd>H</kbd> |
@@ -64,19 +69,19 @@ The game autosaves to the browser every 20 seconds.
 npm test
 ```
 
-runs 29 simulation tests (about a minute), including:
+runs 40 simulation tests (about a minute), including:
 
 - **Scripted campaigns** on six different islands and all three difficulties: a rule-following player builds a town from nothing, trades, raises armies and razes all three strongholds, with state invariants checked every few seconds.
 - **Monkey testing**: thousands of random actions per island, legal or not, with save/load in the middle. Nothing may throw, and a reloaded game must serialise identically.
-- A test per mechanic (housing tiers, contracts, forester, charm, spire and chapel in the Dark World, crystals, orders, difficulty).
+- A test per mechanic (housing tiers, contracts, forester, charm, spire and chapel in the Dark World, crystals, orders, difficulty, darkness and vision, light powers, lairs and relics, wraiths and warlocks).
 
-`e2e/` holds two browser scripts that use only real mouse, keyboard and touch input: a 105-point checklist of every control, and a full campaign played by clicking. See `e2e/README.md`.
+`e2e/` holds two browser scripts that use only real mouse, keyboard and touch input: a 120-point checklist of every control, and a full campaign played by clicking. See `e2e/README.md`.
 
 Useful URL switches: `?seed=2024` starts on a specific island, `?gfx=low` turns off shadows and bloom (also in the ☰ menu).
 
 ## Code map
 
-- `src/sim/` — the game rules, independent of rendering: `world.ts` (island generation), `economy.ts`, `trade.ts`, `combat.ts`, `quests.ts`, `defs.ts` (all balance numbers).
+- `src/sim/` — the game rules, independent of rendering: `world.ts` (island generation), `economy.ts`, `trade.ts`, `combat.ts`, `dark.ts` (vision, light powers, lairs and relics), `quests.ts`, `defs.ts` (all balance numbers).
 - `src/render/` — three.js scene: terrain and water, procedural building/unit models, particles, the light/dark switch.
 - `src/ui/` — HUD, panels, minimap and procedural audio.
 - `tests/` — simulation tests; `e2e/` — browser tests.

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { campaign } from './helpers';
 
 const fmt = (r: ReturnType<typeof campaign>) =>
-  `seed ${r.seed}: built ${r.built}/${r.planned}, gate ${r.gate.toFixed(1)}m, first attack ${r.army.toFixed(1)}m, victory ${r.win ? r.win.toFixed(1) + 'm' : 'NO'}, retreats ${r.retreats}, minGold ${Math.round(r.minGold)}, pop ${r.pop}, income ${Math.round(r.income)}, raids ${r.raids}, army left ${r.left}`;
+  `seed ${r.seed}: built ${r.built}/${r.planned}, gate ${r.gate.toFixed(1)}m, first attack ${r.army.toFixed(1)}m, victory ${r.win ? r.win.toFixed(1) + 'm' : 'NO'}, retreats ${r.retreats}, minGold ${Math.round(r.minGold)}, pop ${r.pop}, income ${Math.round(r.income)}, raids ${r.raids}, army left ${r.left}, relics ${r.relics}/${r.game.state.lairs.length}, casts ${r.casts}`;
 
 describe('scripted campaigns (no cheats)', () => {
   for (const seed of [2024, 1, 7, 42, 99, 31337]) {

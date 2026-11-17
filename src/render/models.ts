@@ -282,6 +282,19 @@ export function campModel(ci: number): THREE.Group {
   return g.build();
 }
 
+/** A creature lair: a ring of jagged stones around a glowing pit, strewn with bones. */
+export function lairModel(i: number): THREE.Group {
+  const g = new MB();
+  g.cyl(S.obsidian, 1.15, 1.35, 0.18, 0, 0, 0, 8).cyl(S.eyeViolet, 0.55, 0.55, 0.04, 0, 0.17, 0, 8);
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * PI * 2 + i, h = 0.7 + ((k * 5 + i) % 4) * 0.28;
+    g.add(S.obsidian, new THREE.ConeGeometry(0.26, h, 4), Math.cos(a) * 0.95, h / 2, Math.sin(a) * 0.95, a, 0, 0.18);
+  }
+  for (let k = 0; k < 4; k++) { const a = k * 1.7 + i; g.box(S.bone, 0.3, 0.04, 0.05, Math.cos(a) * 1.5, 0.02, Math.sin(a) * 1.5, a).sphere(S.bone, 0.07, Math.cos(a + 0.5) * 1.6, 0.06, Math.sin(a + 0.5) * 1.6); }
+  g.add(S.lumen, new THREE.OctahedronGeometry(0.16), 0, 1.0, 0);
+  return g.build();
+}
+
 export function wellModel(): THREE.Group {
   const g = new MB();
   g.cyl(S.gateStone, 1.0, 1.1, 0.3, 0, 0, 0, 8).cyl(S.lumen, 0.75, 0.75, 0.06, 0, 0.28, 0, 8);
@@ -359,6 +372,18 @@ export function unitModel(kind: UnitKind): THREE.Group {
       g.box(S.brute, 0.16, 0.5, 0.16, -0.4, 0.3, 0.05).box(S.brute, 0.16, 0.5, 0.16, 0.4, 0.3, 0.05);
       g.cyl(S.darkWood, 0.05, 0.05, 0.7, 0.4, 0.2, 0.25, 5, 0.9).sphere(S.obsidian, 0.16, 0.4, 0.75, 0.6);
       g.cone(S.bone, 0.05, 0.16, -0.12, 1.02, 0.06, 4).cone(S.bone, 0.05, 0.16, 0.12, 1.02, 0.06, 4);
+      break;
+    case 'wraith':
+      g.cone(S.wraith, 0.26, 0.75, 0, 0.12, 0, 6).sphere(S.wraith, 0.12, 0, 0.82, 0.03);
+      g.box(S.eyeViolet, 0.04, 0.03, 0.02, -0.045, 0.84, 0.14).box(S.eyeViolet, 0.04, 0.03, 0.02, 0.045, 0.84, 0.14);
+      g.box(S.wraith, 0.06, 0.34, 0.06, -0.22, 0.45, 0.14, 0, -0.9).box(S.wraith, 0.06, 0.34, 0.06, 0.22, 0.45, 0.14, 0, -0.9);
+      g.cone(S.bone, 0.025, 0.12, -0.22, 0.52, 0.34, 4).cone(S.bone, 0.025, 0.12, 0.22, 0.52, 0.34, 4);
+      break;
+    case 'warlock':
+      g.cone(S.warlock, 0.3, 0.7, 0, 0, 0, 7).box(S.warlock, 0.3, 0.26, 0.2, 0, 0.5, 0);
+      g.sphere(S.ghoulDark, 0.1, 0, 0.84, 0.02).cone(S.warlock, 0.16, 0.34, 0, 0.88, 0, 6);
+      g.box(S.eyeViolet, 0.035, 0.03, 0.02, -0.04, 0.85, 0.11).box(S.eyeViolet, 0.035, 0.03, 0.02, 0.04, 0.85, 0.11);
+      g.cyl(S.darkWood, 0.022, 0.022, 1.15, 0.3, 0, 0.12, 5).add(S.eyeViolet, new THREE.OctahedronGeometry(0.09), 0.3, 1.22, 0.12);
       break;
     case 'sovereign':
       g.cone(S.sovereign, 0.6, 1.5, 0, 0, 0, 7);

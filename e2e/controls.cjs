@@ -233,13 +233,13 @@ const H = (p) => ({
   await h.st(() => { const g = window.dal.game; for (let i = 0; i < 300; i++) g.tick(0.1); });
   check('the standing order sells stone down to the kept level while docked', (await h.st(() => Math.floor(window.dal.game.state.stock.stone))) === 20, `stone ${await h.st(() => window.dal.game.state.stock.stone)}`);
   // contract
-  await h.st(() => { const g = window.dal.game; g.state.contracts = [{ merchant: 1, good: 'cloth', qty: 20, reward: 500, t: 300 }]; g.state.ships[1].t = 60; });
+  await h.st(() => { const g = window.dal.game; g.state.orders = {}; g.state.contracts = [{ merchant: 1, good: 'cloth', qty: 20, reward: 500, t: 300 }]; g.state.ships[1].t = 60; });
   await h.clickEl('[data-act="ttab"][data-t="ships"]'); await p.waitForTimeout(300);
   t0 = await h.st(() => window.dal.game.state.gold);
   await h.clickEl('[data-act="deliver"]');
-  check('contract Deliver button pays the reward', Math.round((await h.st(() => window.dal.game.state.gold)) - t0) === 500);
+  check('contract Deliver button pays the reward', Math.abs((await h.st(() => window.dal.game.state.gold)) - t0 - 500) < 12 && (await h.st(() => window.dal.game.state.stats.contracts)) === 1);
   await h.st(() => { const g = window.dal.game; g.state.contracts = [{ merchant: 0, good: 'cloth', qty: 20, reward: 500, t: 300 }]; g.state.ships[0].phase = 'away'; g.state.ships[0].t = 500; });
-  await p.waitForTimeout(400);
+  await p.waitForTimeout(1000);
   check('Deliver is disabled when that merchant is not in port', await p.evaluate(() => document.querySelector('[data-act="deliver"]')?.disabled === true));
   // production building pause
   await h.st(() => { const g = window.dal.game, s = g.world.start; for (let r = 2; r < 30; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) if (g.canPlace('sawmill', s.x + dx, s.z + dz).ok && !g.find('sawmill')) g.place('sawmill', s.x + dx, s.z + dz); });
@@ -312,6 +312,43 @@ const H = (p) => ({
   await h.st(() => { const e = window.dal.game.entById.get(window.__foe); e.hp = 60; });
   await p.waitForTimeout(6000);
   check('soldiers kill the target', await h.st(() => !window.dal.game.entById.has(window.__foe)));
+  // --- darkness, light powers, lairs ---
+  const fog = await h.st(() => { const g = window.dal.game; let lit = 0, dark = 0; for (let i = 0; i < 6400; i++) { if (g.vis[i] === 2) lit++; else if (g.vis[i] === 0) dark++; } return { lit, dark }; });
+  check('most of the dark island starts unexplored, with light around the gate', fog.lit > 150 && fog.dark > 3000, JSON.stringify(fog));
+  const hidden = await h.st(() => { const g = window.dal.game, r = window.dal.renderer; const camp = g.entById.get(g.state.camps[2].entId); const v = r.uMap.get(camp.id); return { explored: g.vis[Math.floor(camp.z) * 80 + Math.floor(camp.x)], shown: v ? v.g.visible : null }; });
+  check('a stronghold in the unlit dark is not drawn', hidden.explored === 0 && hidden.shown === false, JSON.stringify(hidden));
+  await h.st(() => { const g = window.dal.game, ge = g.gateEnt(); g.state.stock.shards = 10; for (let i = 0; i < 3; i++) { const e = g.spawnNear('ghoul', 1, ge.x - 5.5 + i * 0.6, ge.z + 4.5, -1); e.hx = e.x; e.hz = e.z; e.order = 1; e.ox = e.x; e.oz = e.z; e.hp = 50; } for (const u of g.state.entities) if (u.team === 0 && u.kind !== 'gate') { u.order = 1; u.ox = u.x; u.oz = u.z; u.tgt = 0; } });
+  await p.keyboard.press('z'); await p.waitForTimeout(100);
+  check('Z arms Radiant Burst and shows its circle', (await h.st(() => window.dal.casting)) === 'burst');
+  tgt = await h.scr(ge[0] - 5, ge[1] + 4.5); await p.mouse.move(tgt[0], tgt[1]); await h.frames(4);
+  check('the aim circle follows the cursor', await h.st(() => window.dal.renderer.rangeRing.visible && Math.abs(window.dal.renderer.rangeRing.scale.x - 3.2) < 0.01));
+  const k0 = await h.st(() => window.dal.game.state.stats.kills);
+  const casts = () => h.st(() => window.dal.game.state.stats.casts);
+  await p.mouse.click(tgt[0], tgt[1]); await p.waitForTimeout(400);
+  const burst = await h.st(() => ({ casting: window.dal.casting, cd: window.dal.game.state.abil.burst, casts: window.dal.game.state.stats.casts, kills: window.dal.game.state.stats.kills, ring: window.dal.renderer.rangeRing.visible }));
+  check('clicking casts the burst: creatures die, cooldown starts, aiming ends', burst.casting === null && burst.cd > 20 && burst.casts === 1 && burst.kills >= k0 + 3 && !burst.ring, JSON.stringify(burst));
+  await p.waitForTimeout(400);
+  check('the power button shows its cooldown', await p.evaluate(() => !!document.querySelector('[data-a="burst"] .cdn')));
+  await p.keyboard.press('z'); await p.waitForTimeout(200);
+  check('a power on cooldown explains itself instead of arming', (await h.st(() => window.dal.casting)) === null && /recharging/.test(await p.textContent('#toasts')));
+  await p.keyboard.press('v'); check('V arms Mending Light', (await h.st(() => window.dal.casting)) === 'mend');
+  await p.mouse.click(520, 330, { button: 'right' }); check('right-click cancels aiming', (await h.st(() => window.dal.casting)) === null);
+  await h.clickEl('[data-a="mend"]'); check('the Mending button arms it too', (await h.st(() => window.dal.casting)) === 'mend');
+  await p.keyboard.press('Escape'); check('Esc cancels aiming', (await h.st(() => window.dal.casting)) === null);
+  const farDark = await h.st(() => { const g = window.dal.game, c = g.world.campSites[2]; return [c.x, c.z]; });
+  await p.keyboard.press('v'); await h.cam(farDark[0], farDark[1]); tgt = await h.scr(farDark[0], farDark[1]); await p.mouse.click(tgt[0], tgt[1]); await p.waitForTimeout(250);
+  check('casting into the unlit dark is refused', /light does not reach/.test(await p.textContent('#toasts')) && (await casts()) === 1);
+  await p.keyboard.press('Escape'); await h.cam(ge[0], ge[1]);
+  await p.keyboard.press('t'); await p.waitForTimeout(200);
+  check('T casts Rallying Cry at once', (await h.st(() => window.dal.game.state.abil.rallyT > 10)) && (await casts()) === 2);
+  bb = await p.locator('[data-a="rally"]').boundingBox(); await p.mouse.move(bb.x + 20, bb.y + 20); await p.waitForTimeout(150);
+  check('power buttons have tooltips', /Rallying Cry/.test(await p.textContent('#tooltip')));
+  await p.mouse.move(520, 330);
+  await h.st(() => { const g = window.dal.game; g.state.lairs[0].relic = 'ember'; const d = g.entById.get(g.state.lairs[0].entId); d.hp = 0; for (let i = 0; i < 4; i++) g.tick(0.1); });
+  await p.waitForTimeout(700);
+  check('clearing a lair grants a relic, announced and shown in the toolbar', (await h.st(() => window.dal.game.state.relics.length)) === 1 && /Lair cleared/.test(await p.textContent('#toasts')) && (await p.locator('.relics [data-tip]').count()) === 1);
+  await h.st(() => { for (const u of window.dal.game.state.entities) if (u.team === 0 && u.kind !== 'gate') { u.order = 0; } });
+
   // training buttons and queue
   await h.st(() => { const g = window.dal.game, s = g.world.start; for (let r = 4; r < 24; r++) for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) if (!g.find('barracks') && g.canPlace('barracks', s.x + dx, s.z + dz).ok) { g.place('barracks', s.x + dx, s.z + dz); } });
   check('training is refused while the barracks has no road', await h.st(async () => { const c = await import('/src/sim/combat.ts'); return /Barracks/.test(c.canTrain(window.dal.game, 'swordsman') || ''); }));

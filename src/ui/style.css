@@ -157,3 +157,14 @@ button.big:hover { background: linear-gradient(#fffbe8, #ffc95a) !important; tra
 .diff button:hover { background: rgba(60, 40, 110, 0.8) !important; }
 .diff button.on { background: #ffd66b !important; color: #3a2205; border-color: #fff; }
 .diffdesc { color: #d9cff0; font-size: 12px; margin-bottom: 16px; min-height: 16px; }
+
+/* --- light powers & relics --- */
+.vsep { width: 1px; align-self: stretch; background: var(--line); opacity: 0.6; margin: 0 2px; }
+.bbtn.power { overflow: hidden; border-color: #e8c56a; }
+.bbtn.power .cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(10, 4, 30, 0.72); pointer-events: none; }
+.bbtn.power .cdn { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 19px; color: #fff; text-shadow: 0 1px 4px #000; pointer-events: none; }
+.bbtn.power.active { box-shadow: 0 0 0 2px #ffc24a, 0 0 14px #ffc24a; }
+.bbtn .lock kbd { font-size: 9px; padding: 0 3px; }
+.relics { margin-top: 4px; font-size: 17px; letter-spacing: 2px; white-space: nowrap; }
+.relics span { cursor: help; }
+.relics .empty { opacity: 0.4; font-size: 14px; }

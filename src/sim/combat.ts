@@ -1,3 +1,5 @@
+import { claimRelic, dmgMult, hasRelic, maxHp, speedMult } from './dark';
+import { LAIR_LOOT, RELICS, RelicId } from './defs';
 import { ARMY_PER_BARRACKS, CAMPS, CHAPEL_HEAL, CHAPEL_RANGE, MAX_BEACONS, POST_LEASH, REST_DELAY, REST_HEAL, SPIRE_DMG, SPIRE_RANGE, TRAIN_TIME, UNITS, UnitKind } from './defs';
 import type { Game } from './game';
 import { findPath, los, nearestWalk } from './path';
@@ -78,7 +80,7 @@ export function orderAttack(g: Game, ids: number[], targetId: number) {
   }
 }
 
-function damage(g: Game, t: Entity, dmg: number, from: Entity | undefined) {
+export function damage(g: Game, t: Entity, dmg: number, from: Entity | undefined) {
   if (t.hp <= 0 || t.down) return;
   t.hp -= dmg; t.hitT = g.state.time;
   g.events.push({ t: 'hit', x: t.x, z: t.z, team: t.team });
@@ -86,6 +88,8 @@ function damage(g: Game, t: Entity, dmg: number, from: Entity | undefined) {
   // guards rally when their stronghold is attacked
   if (t.kind === 'camp' && from) {
     for (const e of g.state.entities) if (e.camp === t.camp && e !== t && !e.tgt && !e.raid) e.tgt = from.id;
+  } else if (t.kind === 'lair' && from) {
+    for (const e of g.state.entities) if (e.guard && e.lair === t.lair && !e.tgt) e.tgt = from.id;
   }
 }
 
@@ -97,6 +101,7 @@ function nearestEnemy(g: Game, e: Entity, radius: number, mobileOnly: boolean): 
     if (st && mobileOnly) continue;
     let dd = Math.hypot(o.x - e.x, o.z - e.z) - UNITS[o.kind].radius;
     if (st) dd += 1.5; // prefer fighters over structures
+    else if (e.kind === 'wraith' && UNITS[o.kind].ranged) dd -= 4; // wraiths go for the archers
     if (dd < bd) { bd = dd; best = o; }
   }
   return best;
@@ -119,7 +124,7 @@ function acquire(g: Game, e: Entity) {
   const cur = g.entById.get(e.tgt);
   if (!alive(cur)) e.tgt = 0;
   // guards leash back home
-  if (e.team === 1 && !e.raid && e.camp >= 0 && Math.hypot(e.x - e.hx, e.z - e.hz) > 16) {
+  if (e.guard && Math.hypot(e.x - e.hx, e.z - e.hz) > 16) {
     e.tgt = 0; e.order = ORDER.Move; e.ox = e.hx; e.oz = e.hz; e.path = null; return;
   }
   if (alive(cur) && !isStatic(cur) && Math.hypot(cur.x - e.x, cur.z - e.z) < d.aggro * 1.6) return;
@@ -141,7 +146,7 @@ function stepToward(g: Game, e: Entity, tx: number, tz: number, dt: number) {
   } else e.path = null;
   const dx = wx - e.x, dz = wz - e.z, dist = Math.hypot(dx, dz);
   if (dist < 0.01) return;
-  const st = Math.min(dist, d.speed * dt);
+  const st = Math.min(dist, d.speed * speedMult(g, e) * dt);
   const nx = e.x + (dx / dist) * st, nz = e.z + (dz / dist) * st;
   if (W.isWalk(Math.floor(nx), Math.floor(nz))) { e.x = nx; e.z = nz; }
   else if (W.isWalk(Math.floor(nx), Math.floor(e.z))) e.x = nx;
@@ -172,6 +177,15 @@ function onDeath(g: Game, e: Entity) {
   g.events.push({ t: 'die', x: e.x, z: e.z, kind: e.kind, team: e.team });
   if (e.team !== 1) return;
   S.stats.kills++;
+  if (e.kind === 'lair') {
+    const L = S.lairs[e.lair ?? -1];
+    if (!L) return;
+    claimRelic(g, e.lair!);
+    S.gold += LAIR_LOOT.gold; g.addGood('shards', LAIR_LOOT.shards);
+    const r = RELICS[L.relic as RelicId];
+    g.toast(`${r.icon} Lair cleared! You claim the ${r.name}: ${r.desc} (+${LAIR_LOOT.gold} gold, +${LAIR_LOOT.shards} shards)`, 'good');
+    return;
+  }
   if (e.kind === 'camp') {
     const cd = CAMPS[e.camp], cs = S.camps[e.camp];
     cs.alive = false;
@@ -182,7 +196,9 @@ function onDeath(g: Game, e: Entity) {
     if (S.camps.every((c) => !c.alive) && !S.won) { S.won = true; g.events.push({ t: 'victory' }); }
     return;
   }
-  const loot = e.kind === 'ghoul' ? (g.rand() < 0.35 ? 1 : 0) : e.kind === 'spitter' ? (g.rand() < 0.5 ? 1 : 0) : e.kind === 'brute' ? 2 : 6;
+  const roll = g.rand();
+  let loot = e.kind === 'ghoul' ? (roll < 0.35 ? 1 : 0) : e.kind === 'spitter' || e.kind === 'wraith' ? (roll < 0.5 ? 1 : 0) : e.kind === 'warlock' ? 1 : e.kind === 'brute' ? 2 : 6;
+  if (loot && hasRelic(g, 'prism')) loot++;
   if (loot) { g.addGood('shards', loot); g.events.push({ t: 'loot', x: e.x, z: e.z, n: loot }); }
   S.gold += 4 + Math.floor(g.rand() * 8);
 }
@@ -210,9 +226,10 @@ export function tickCombat(g: Game, dt: number) {
       S.gateDown -= dt;
       if (S.gateDown <= 0) { gate.down = false; gate.hp = UNITS.gate.hp * 0.5; g.toast('The Rift Gate flickers back to life.', 'info'); }
     } else {
-      gate.hp = Math.min(UNITS.gate.hp, gate.hp + 1.5 * dt);
+      const font = hasRelic(g, 'font');
+      gate.hp = Math.min(UNITS.gate.hp, gate.hp + (font ? 6 : 1.5) * dt);
       for (const e of ents) {
-        if (e.team === 0 && e !== gate && Math.hypot(e.x - gate.x, e.z - gate.z) < 6) e.hp = Math.min(UNITS[e.kind].hp, e.hp + 3 * dt);
+        if (e.team === 0 && e !== gate && Math.hypot(e.x - gate.x, e.z - gate.z) < 6) e.hp = Math.min(maxHp(g, e), e.hp + (font ? 6 : 3) * dt);
       }
     }
     if (S.difficulty > 0 && S.camps.some((c) => c.alive)) {
@@ -226,7 +243,7 @@ export function tickCombat(g: Game, dt: number) {
     if (!b.connected) continue;
     if (b.type === 'chapel') {
       const c = g.center(b);
-      for (const e of ents) if (e.team === 0 && e.hp > 0 && !e.down && Math.hypot(e.x - c.x, e.z - c.z) < CHAPEL_RANGE) e.hp = Math.min(UNITS[e.kind].hp, e.hp + CHAPEL_HEAL * dt);
+      for (const e of ents) if (e.team === 0 && e.hp > 0 && !e.down && Math.hypot(e.x - c.x, e.z - c.z) < CHAPEL_RANGE) e.hp = Math.min(maxHp(g, e), e.hp + CHAPEL_HEAL * dt);
     } else if (b.type === 'spire' && (b.fuel ?? 0) > 0) {
       const cd = (g.spireCd.get(b.id) ?? 0) - dt;
       g.spireCd.set(b.id, cd);
@@ -249,7 +266,7 @@ export function tickCombat(g: Game, dt: number) {
     for (const e of ents) if (e.team === 0 && UNITS[e.kind].speed > 0 && Math.hypot(e.x - n.x, e.z - n.z) < 1.6) { near = true; break; }
     n.prog = near ? n.prog + dt : Math.max(0, n.prog - dt);
     if (n.prog >= 4) {
-      const amount = 3 + Math.floor(g.rand() * 3);
+      const amount = 3 + Math.floor(g.rand() * 3) + (hasRelic(g, 'prism') ? 1 : 0);
       n.ready = false; n.t = 300; n.prog = 0;
       g.addGood('shards', amount); S.stats.harvested += amount;
       g.events.push({ t: 'harvest', x: n.x, z: n.z, n: amount });
@@ -271,7 +288,7 @@ export function tickCombat(g: Game, dt: number) {
       if (have.length < cd.guards.length) {
         const need = cd.guards.filter((k) => k !== 'sovereign');
         const kind = need[Math.floor(g.rand() * need.length)];
-        g.spawnNear(kind, 1, site.x + 0.5 + (g.rand() - 0.5) * 5, site.z + 0.5 + (g.rand() - 0.5) * 5, ci);
+        g.spawnNear(kind, 1, site.x + 0.5 + (g.rand() - 0.5) * 5, site.z + 0.5 + (g.rand() - 0.5) * 5, ci).guard = true;
       }
     }
   });
@@ -281,7 +298,21 @@ export function tickCombat(g: Game, dt: number) {
     if (e.hp <= 0 || e.down) continue;
     const d = UNITS[e.kind];
     e.cd -= dt; e.think -= dt; e.moving = false;
-    if (e.team === 0 && d.speed > 0 && S.time - (e.hitT ?? -99) > REST_DELAY) e.hp = Math.min(d.hp, e.hp + REST_HEAL * dt);
+    if (e.team === 0 && d.speed > 0 && S.time - (e.hitT ?? -99) > REST_DELAY) e.hp = Math.min(maxHp(g, e), e.hp + REST_HEAL * dt);
+    if (e.kind === 'warlock') {
+      // every few seconds the warlock mends the most badly hurt creature near it
+      e.sp = (e.sp ?? 2) - dt;
+      if (e.sp <= 0) {
+        e.sp = 4;
+        let worst: Entity | undefined, wf = 0.85;
+        for (const o of ents) {
+          if (o.team !== 1 || o === e || o.hp <= 0 || isStatic(o) || Math.hypot(o.x - e.x, o.z - e.z) > 5.5) continue;
+          const f = o.hp / UNITS[o.kind].hp;
+          if (f < wf) { wf = f; worst = o; }
+        }
+        if (worst) { worst.hp = Math.min(UNITS[worst.kind].hp, worst.hp + 45); g.events.push({ t: 'mend', x: worst.x, z: worst.z, team: 1 }); }
+      }
+    }
     if (e.think <= 0) { e.think = 0.3 + g.rand() * 0.15; acquire(g, e); }
     // a raider that has wandered for five minutes without finding a fight slinks home
     if (e.raid && !e.tgt && S.time - (e.raidT ?? S.time) > 300) { e.hp = -1e9; continue; }
@@ -293,19 +324,19 @@ export function tickCombat(g: Game, dt: number) {
         if (e.cd <= 0) {
           e.cd = d.cd; e.atkT = S.time;
           if (d.ranged) {
-            S.projectiles.push({ id: S.nextId++, x: e.x, z: e.z, y: isStatic(e) ? 2.4 : 0.7, tgt: t.id, dmg: e.kind === 'camp' ? CAMPS[e.camp].dmg : d.dmg, team: e.team, from: e.id });
+            S.projectiles.push({ id: S.nextId++, x: e.x, z: e.z, y: isStatic(e) ? 2.4 : 0.7, tgt: t.id, dmg: e.kind === 'camp' ? CAMPS[e.camp].dmg : d.dmg * dmgMult(g, e), team: e.team, from: e.id });
             g.events.push({ t: 'shot', x: e.x, z: e.z, team: e.team });
           } else if (d.aoe) {
             // sweeping blow: everyone near the victim is struck
             for (const o of ents) if (o.team !== e.team && Math.hypot(o.x - t.x, o.z - t.z) <= d.aoe) damage(g, o, d.dmg, e);
-          } else damage(g, t, d.dmg, e);
+          } else damage(g, t, d.dmg * dmgMult(g, e), e);
         }
       } else if (d.speed > 0) stepToward(g, e, t.x, t.z, dt);
     } else if (d.speed > 0) {
       if (e.order === ORDER.Move || e.order === ORDER.AttackMove) {
         if (Math.hypot(e.ox - e.x, e.oz - e.z) < 0.5) { if (e.order === ORDER.Move || e.team === 0) e.order = ORDER.Idle; e.path = null; }
         else stepToward(g, e, e.ox, e.oz, dt);
-      } else if (e.team === 1 && e.camp >= 0 && !e.raid && Math.hypot(e.hx - e.x, e.hz - e.z) > 1.5) {
+      } else if (e.guard && Math.hypot(e.hx - e.x, e.hz - e.z) > 1.5) {
         stepToward(g, e, e.hx, e.hz, dt);
       } else if (e.team === 0) {
         // after chasing something off, soldiers walk back to their post (where they can heal);

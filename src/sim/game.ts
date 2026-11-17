@@ -1,5 +1,5 @@
 import {
-  BASE_STORAGE, BEAUTY_FULL, BEAUTY_RADIUS, BLIGHT_RADIUS, BUILDINGS, GATE_MIN_CAMP_DIST, BuildingId, CAMPS, Cost, GOOD_IDS, Good, MERCHANTS,
+  BASE_STORAGE, BEAUTY_FULL, BEAUTY_RADIUS, BLIGHT_RADIUS, BUILDINGS, GATE_MIN_CAMP_DIST, GATE_MIN_LAIR_DIST, BuildingId, CAMPS, Cost, GOOD_IDS, Good, MERCHANTS,
   ROAD_COST, UNITS, WAREHOUSE_STORAGE,
 } from './defs';
 import { Building, CampState, Entity, GameEvent, GameState, ORDER } from './state';
@@ -9,8 +9,9 @@ import { tickTrade } from './trade';
 import { tickCombat } from './combat';
 import { tickQuests } from './quests';
 import { nearestWalk } from './path';
+import { computeVision, maxHp, setupLairs, tickDark } from './dark';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface PlaceCheck { ok: boolean; reason?: string }
 
@@ -28,6 +29,10 @@ export class Game {
   roadVer = 0;
   terrainVer = 0;
   treeVer = 0;
+  /** Dark World visibility per tile: 0 never lit, 1 explored, 2 lit right now. */
+  vis = new Uint8Array(N * N);
+  visVer = 0;
+  visT = 0;
   rand: () => number;
   private questT = 0;
   /** Per-minute flows of each good, refreshed every tick (for the UI). */
@@ -47,6 +52,7 @@ export class Game {
     for (const b of state.buildings) this.stamp(b, b.id);
     for (const i of state.roads) this.road[i] = 1;
     for (const e of state.entities) this.entById.set(e.id, e);
+    for (let i = 0; i < state.explored.length && i < N * N; i++) this.vis[i] = state.explored[i] === '1' ? 1 : 0;
     this.recomputeBlight();
   }
 
@@ -65,7 +71,8 @@ export class Game {
       camps: CAMPS.map(() => ({ alive: true, entId: 0, respawn: 40, well: 90 }) as CampState),
       raidTimer: 0, raidCount: 0, gateDown: 0, trainQ: [], trainT: 0, quest: 0, qdone: [],
       difficulty, nodes: [], contracts: [], contractT: 90,
-      stats: { trades: 0, kills: 0, trained: 0, visitedDark: false, t2: 0, t3: 0, contracts: 0, harvested: 0 },
+      lairs: [], relics: [], abil: { burst: 0, mend: 0, rally: 0, rallyT: 0 }, explored: '',
+      stats: { trades: 0, kills: 0, trained: 0, visitedDark: false, t2: 0, t3: 0, contracts: 0, harvested: 0, lairs: 0, casts: 0 },
       won: false,
     };
     const g = new Game(state);
@@ -79,7 +86,7 @@ export class Game {
       state.camps[ci].entId = camp.id;
       cd.guards.forEach((k, gi) => {
         const a = (gi / cd.guards.length) * Math.PI * 2;
-        g.spawnNear(k, 1, site.x + 0.5 + Math.cos(a) * 2.6, site.z + 0.5 + Math.sin(a) * 2.6, ci);
+        g.spawnNear(k, 1, site.x + 0.5 + Math.cos(a) * 2.6, site.z + 0.5 + Math.sin(a) * 2.6, ci).guard = true;
       });
     });
     // Shard crystals scattered over the dark island, away from home and from each other
@@ -91,11 +98,18 @@ export class Game {
       if (state.nodes.some((n) => Math.hypot(n.x - x, n.z - z) < 9)) continue;
       state.nodes.push({ x: x + 0.5, z: z + 0.5, ready: true, t: 0, prog: 0 });
     }
+    setupLairs(g);
     g.recomputeBlight();
+    computeVision(g);
     return g;
   }
 
-  serialize(): string { return JSON.stringify(this.state); }
+  serialize(): string {
+    let ex = '';
+    for (let i = 0; i < N * N; i++) ex += this.vis[i] ? '1' : '0';
+    this.state.explored = ex;
+    return JSON.stringify(this.state);
+  }
   static load(json: string): Game | null {
     try {
       const st = JSON.parse(json) as GameState;
@@ -199,6 +213,7 @@ export class Game {
         const c = this.world.campSites[ci];
         if (this.state.camps[ci].alive && Math.hypot(c.x - (x + 1), c.z - (z + 1)) < GATE_MIN_CAMP_DIST) return { ok: false, reason: 'Too close to a dark stronghold — the Rift would open under its guards' };
       }
+      for (const L of this.state.lairs) if (L.alive && Math.hypot(L.x - (x + 1.5), L.z - (z + 1.5)) < GATE_MIN_LAIR_DIST) return { ok: false, reason: 'Too close to a creature lair in the Dark World' };
     }
     if (d.needs && this.resEfficiency(type, x, z) <= 0) {
       return { ok: false, reason: d.needs === 'coast' ? 'Must be on the coast' : d.needs === 'rock' ? 'Must be near mountains' : 'Needs forest nearby' };
@@ -362,6 +377,7 @@ export class Game {
       id: this.state.nextId++, kind, team, x, z, hp: UNITS[kind].hp, cd: this.rand(), think: this.rand() * 0.3,
       tgt: 0, order: ORDER.Idle, ox: x, oz: z, path: null, pi: 0, repath: 0, gx: 0, gz: 0, hx: x, hz: z, camp, face: 0,
     };
+    e.hp = maxHp(this, e);
     this.state.entities.push(e); this.entById.set(e.id, e);
     return e;
   }
@@ -384,6 +400,7 @@ export class Game {
     tickEconomy(this, dt);
     tickTrade(this, dt);
     tickCombat(this, dt);
+    tickDark(this, dt);
     this.questT -= dt;
     if (this.questT <= 0) { this.questT = 1; tickQuests(this); }
   }

@@ -9,7 +9,8 @@ import { BUILDINGS, BuildingId, CAMPS, CHAPEL_RANGE, MERCHANTS, SPIRE_RANGE, UNI
 import type { Building, Entity, GameEvent } from '../sim/state';
 import { N, T } from '../sim/world';
 import { S, setGhost } from './materials';
-import { CHIMNEY, buildingModel, campModel, nodeModel, scarModel, shipModel, unitModel, wellModel } from './models';
+import { maxHp } from '../sim/dark';
+import { CHIMNEY, buildingModel, campModel, lairModel, nodeModel, scarModel, shipModel, unitModel, wellModel } from './models';
 import { Particles } from './particles';
 import { Terrain } from './terrain';
 
@@ -63,6 +64,8 @@ export class Renderer {
   private nodes: THREE.Group[] = [];
   private birds: THREE.InstancedMesh;
   private rangeRing: THREE.Mesh;
+  private pools: THREE.InstancedMesh;
+  private flash = 0;
   private walkerMesh: THREE.InstancedMesh;
   private warnMat = new THREE.SpriteMaterial({ map: warnTexture(), depthTest: false });
   private barMat = { bg: new THREE.SpriteMaterial({ color: 0x1a1020, depthTest: false }), good: new THREE.SpriteMaterial({ color: 0x46b85a, depthTest: false }), bad: new THREE.SpriteMaterial({ color: 0xc8303e, depthTest: false }) };
@@ -130,6 +133,14 @@ export class Renderer {
     this.rangeRing = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 72).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.85, depthTest: false }));
     this.rangeRing.visible = false; this.rangeRing.renderOrder = 5;
     this.world.add(this.rangeRing);
+    // pools of light on the ground around everything that shines in the Dark World
+    const pg = new THREE.CircleGeometry(1, 28).rotateX(-Math.PI / 2);
+    const pc = new Float32Array(pg.attributes.position.count * 3);
+    for (let i = 0; i < pg.attributes.position.count; i++) { const r = Math.hypot(pg.attributes.position.getX(i), pg.attributes.position.getZ(i)); pc.fill(Math.pow(Math.max(0, 1 - r), 1.6), i * 3, i * 3 + 3); }
+    pg.setAttribute('color', new THREE.BufferAttribute(pc, 3));
+    this.pools = new THREE.InstancedMesh(pg, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.17 }), 32);
+    this.pools.frustumCulled = false; this.pools.count = 0;
+    this.darkGroup.add(this.pools);
 
     // placement preview
     this.previewPad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x6dff8a, transparent: true, opacity: 0.45, depthTest: false }));
@@ -233,6 +244,7 @@ export class Renderer {
     for (const e of this.game.state.entities) {
       if (e.team !== team || e.hp <= 0) continue;
       const d = UNITS[e.kind];
+      if (team === 1) { const seen = this.game.vis[Math.floor(e.z) * N + Math.floor(e.x)] ?? 0; if (!(seen === 2 || (d.speed === 0 && seen >= 1))) continue; }
       const p = this.project(e.x, this.game.world.heightAt(e.x, e.z) + (d.speed ? 0.4 : 1), e.z);
       if (!p.ok) continue;
       const dist = Math.hypot(p.x - cx, p.y - cy) - d.radius * 30 * scale;
@@ -293,6 +305,23 @@ export class Renderer {
         if (b) { const c = this.game.center(b); P.burst(c.x, this.hAt(c.x, c.z) + 0.8, c.z, 0xffe9a8, 30, 2, 0.18, 1.0, this.dark ? 2 : 1.3, 1); }
         break;
       }
+      case 'burst': {
+        const y = this.hAt(ev.x, ev.z);
+        for (let i = 0; i < 48; i++) { const a = (i / 48) * 6.283; P.emit(ev.x + Math.cos(a) * 0.3, y + 0.25, ev.z + Math.sin(a) * 0.3, Math.cos(a) * 5.2, 0.4, Math.sin(a) * 5.2, 0xffe9a8, 0.3, 0.62, { bright: 2.6 }); }
+        for (let i = 0; i < 40; i++) P.emit(ev.x + (Math.random() - 0.5) * 2.5, y + 7 * Math.random(), ev.z + (Math.random() - 0.5) * 2.5, 0, -9, 0, 0xfff6d8, 0.26, 0.7, { bright: 2.8 });
+        this.flash = 1;
+        break;
+      }
+      case 'mend': {
+        const y = this.hAt(ev.x, ev.z), col = ev.team === 0 ? 0x8dffa8 : 0xc070ff, r = ev.team === 0 ? 4 : 0.6;
+        for (let i = 0; i < (ev.team === 0 ? 60 : 14); i++) { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * r; P.emit(ev.x + Math.cos(a) * d, y + 0.1, ev.z + Math.sin(a) * d, 0, 1.4 + Math.random(), 0, col, 0.16, 1.1, { bright: 2.2 }); }
+        break;
+      }
+      case 'rally':
+        for (const e of this.game.state.entities) if (e.team === 0 && UNITS[e.kind].speed > 0) P.burst(e.x, this.hAt(e.x, e.z) + 0.3, e.z, 0xffc24a, 10, 1.6, 0.14, 0.7, 2.4, -1.5);
+        break;
+      case 'relic': P.burst(ev.x, this.hAt(ev.x, ev.z) + 0.8, ev.z, 0xffe9a8, 110, 4.5, 0.26, 1.6, 2.6, 1.5); this.flash = 0.7; break;
+      case 'raid': this.flash = 0.9; break;
       case 'harvest': P.burst(ev.x, this.hAt(ev.x, ev.z) + 0.8, ev.z, 0xff7ad9, 40, 2.6, 0.2, 1.1, 2.4, 2); break;
       case 'breach': { const g = this.game.gateEnt(); if (g) P.burst(g.x, 1.5, g.z, 0xb060ff, 90, 5, 0.3, 1.4, 2.4, 2); break; }
       default: break;
@@ -383,7 +412,8 @@ export class Renderer {
   private makeUnit(e: Entity): UView {
     const g = new THREE.Group(), d = UNITS[e.kind];
     let body: THREE.Group, h = 1;
-    if (e.kind === 'camp') { body = campModel(e.camp); h = 4.2 + e.camp; const l = new THREE.PointLight(CAMPS[e.camp].color, 30, 18, 1.5); l.position.y = 3; g.add(l); }
+    if (e.kind === 'lair') { body = lairModel(e.lair ?? 0); h = 2.1; const l = new THREE.PointLight(0xb060ff, 5, 8, 1.5); l.position.y = 1.2; g.add(l); }
+    else if (e.kind === 'camp') { body = campModel(e.camp); h = 4.2 + e.camp; const l = new THREE.PointLight(CAMPS[e.camp].color, 30, 18, 1.5); l.position.y = 3; g.add(l); }
     else if (e.kind === 'gate') { body = new THREE.Group(); h = 3.3; }
     else { body = unitModel(e.kind); h = e.kind === 'beacon' ? 3 : e.kind === 'sovereign' ? 3.4 : e.kind === 'brute' ? 1.9 : 1.35; }
     g.add(body);
@@ -410,7 +440,10 @@ export class Renderer {
       let v = this.uMap.get(e.id);
       if (!v) { v = this.makeUnit(e); this.uMap.set(e.id, v); }
       const d = UNITS[e.kind], y = this.hAt(e.x, e.z);
-      v.g.position.set(e.x, y, e.z);
+      v.g.position.set(e.x, y + (e.kind === 'wraith' ? 0.18 + Math.sin(this.time * 3 + e.id) * 0.06 : 0), e.z);
+      // creatures outside your light stay hidden; their strongholds and lairs stay on the map once found
+      const seen = g.vis[Math.floor(e.z) * N + Math.floor(e.x)] ?? 0;
+      v.g.visible = e.team === 0 || seen === 2 || (d.speed === 0 && seen >= 1);
       if (d.speed > 0) {
         let df = e.face - v.face; df = Math.atan2(Math.sin(df), Math.cos(df));
         v.face += df * Math.min(1, dt * 12);
@@ -422,7 +455,7 @@ export class Renderer {
       } else if (e.kind === 'camp') {
         v.body.rotation.y = Math.sin(this.time * 0.3 + e.id) * 0.03;
       }
-      const frac = clamp(e.hp / (e.kind === 'camp' ? CAMPS[e.camp].hp : d.hp), 0, 1);
+      const frac = clamp(e.hp / maxHp(g, e), 0, 1);
       const show = this.dark && (frac < 0.999 || d.speed === 0 || this.selected.has(e.id)) && !e.down;
       v.bar.visible = v.barBg.visible = show;
       if (show) {
@@ -450,6 +483,7 @@ export class Renderer {
     S0.nodes.forEach((n, i) => {
       const m = this.nodes[i];
       if (!m) return;
+      m.visible = g.vis[Math.floor(n.z) * N + Math.floor(n.x)] >= 1;
       const target = n.ready ? 1 : 0.18;
       m.scale.setScalar(m.scale.x + (target - m.scale.x) * Math.min(1, dt * 3));
       m.rotation.y += dt * (n.prog > 0 ? 2.5 : 0.15);
@@ -568,6 +602,31 @@ export class Renderer {
         this.particles.emit(gate.x + Math.cos(a) * 1.2, this.hAt(gate.x, gate.z) + 0.3, gate.z + Math.sin(a) * 1.2, 0, 1 + Math.random(), 0, 0xffd27a, 0.11, 1.6, { bright: 2.2 });
       }
     }
+    // light pools, and a decaying flash of lightning / radiance
+    if (this.dark) {
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), col = new THREE.Color();
+      let n = 0;
+      const pool = (x: number, z: number, r: number, hex: number) => { if (n >= 32) return; m4.compose(p.set(x, this.hAt(x, z) + 0.09, z), q, s.set(r, 1, r)); this.pools.setMatrixAt(n, m4); this.pools.setColorAt(n, col.setHex(hex)); n++; };
+      const pulse = 1 + Math.sin(this.time * 2) * 0.04;
+      for (const e of this.game.state.entities) {
+        if (e.kind === 'gate' && !e.down) pool(e.x, e.z, 6.5 * pulse, 0xffc878);
+        else if (e.kind === 'beacon') pool(e.x, e.z, 4.5 * pulse, 0xffd9a0);
+      }
+      for (const b of this.game.state.buildings) {
+        if (!b.connected) continue;
+        const cc = this.game.center(b);
+        if (b.type === 'spire' && (b.fuel ?? 0) > 0) pool(cc.x, cc.z, 7 * pulse, 0xffe0a0);
+        else if (b.type === 'chapel') pool(cc.x, cc.z, 5.5, 0x80e8a0);
+      }
+      this.game.state.camps.forEach((cs, i) => { if (!cs.alive) pool(this.game.world.campSites[i].x + 0.5, this.game.world.campSites[i].z + 0.5, 5, 0xffe0a0); });
+      this.pools.count = n;
+      this.pools.instanceMatrix.needsUpdate = true;
+      if (this.pools.instanceColor) this.pools.instanceColor.needsUpdate = true;
+      const rally = this.game.state.abil.rallyT > 0;
+      if (rally) for (const e of this.game.state.entities) if (e.team === 0 && e.moving && Math.random() < 0.3) this.particles.emit(e.x, this.hAt(e.x, e.z) + 0.2, e.z, 0, 0.8, 0, 0xffc24a, 0.1, 0.5, { bright: 2.2 });
+    }
+    if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 2.2);
+    this.hemi.intensity = (this.dark ? 1.25 : 1.1) + (this.dark ? this.flash * 3 : 0);
     this.particles.update(dt);
     this.first = false;
     this.composer.render();

@@ -4,6 +4,7 @@ import { Game } from '../src/sim/game';
 import { BUILDINGS, BuildingId, CAMPS, UNITS } from '../src/sim/defs';
 import { N, T } from '../src/sim/world';
 import { armyCap, armySize, orderAttack, orderMove, placeBeacon, train } from '../src/sim/combat';
+import { cast } from '../src/sim/dark';
 import { buy, deliver, sell } from '../src/sim/trade';
 
 export function link(g: Game, x: number, z: number, dry?: Set<number>): boolean {
@@ -41,7 +42,7 @@ export function build(g: Game, type: BuildingId): boolean {
     // like a sensible player: don't pave over the forest (keeps woodcutters productive)
     let onForest = false;
     for (let a = 0; a < d.size; a++) for (let b = 0; b < d.size; b++) if (g.world.type[(z + b) * N + x + a] === T.Forest) onForest = true;
-    if (onForest && type !== 'woodcutter') continue;
+    if (onForest && type !== 'woodcutter' && type !== 'gate') continue; // (the gate has few legal sites; clearing trees for it is fine)
     // only build where a road can actually reach (the footprint itself will block tiles)
     const foot = new Set<number>();
     for (let a = 0; a < d.size; a++) for (let b = 0; b < d.size; b++) foot.add((z + b) * N + x + a);
@@ -88,7 +89,7 @@ export function invariants(g: Game): string[] {
   return bad;
 }
 
-export interface CampaignResult { seed: number; built: number; planned: number; gate: number; army: number; win: number; retreats: number; minGold: number; pop: number; income: number; raids: number; quest: number; left: number; log: string[]; game: Game }
+export interface CampaignResult { relics: number; casts: number; seed: number; built: number; planned: number; gate: number; army: number; win: number; retreats: number; minGold: number; pop: number; income: number; raids: number; quest: number; left: number; log: string[]; game: Game }
 
 /** A scripted player: builds a town from nothing, trades, raises armies and attacks each stronghold in turn. No cheats. */
 export function campaign(seed: number, difficulty = 1, minutes = 150, hook?: (g: Game) => void): CampaignResult {
@@ -143,17 +144,34 @@ export function campaign(seed: number, difficulty = 1, minutes = 150, hook?: (g:
       if (cap && armySize(g) + S.trainQ.length < cap) train(g, S.stock.shards >= 2 && S.camps[0].alive === false ? 'knight' : armySize(g) % 3 === 2 ? 'archer' : 'swordsman');
       // late game: more barracks once the first stronghold is down
       if (!S.camps[0].alive && S.buildings.filter((b) => b.type === 'barracks').length < 4 && t % 30 === 0) build(g, 'barracks');
-      const target = S.camps.findIndex((c) => c.alive);
-      if (target < 0) { tWin = t; break; }
+      if (S.camps.every((c) => !c.alive)) { tWin = t; break; }
+      // order of battle: nearest lair, first stronghold, next lair, second stronghold, the rest, then the Sovereign
+      const aliveLairs = S.lairs.map((l, i) => (l.alive ? i : -1)).filter((i) => i >= 0);
+      const campI = S.camps.findIndex((c) => c.alive);
+      const lairsBefore = campI === 0 ? 1 : campI === 1 ? 2 : 99; // how many lairs to have cleared before this stronghold
+      const lairI = S.lairs.length - aliveLairs.length < Math.min(lairsBefore, S.lairs.length) ? aliveLairs[0] : -1;
+      const target = lairI >= 0 ? 100 + lairI : campI;
+      const tEnt = lairI >= 0 ? S.lairs[lairI].entId : S.camps[campI].entId;
+      const tPos = g.entById.get(tEnt);
       if (target !== curTarget) { curTarget = target; attacked = false; const ge = g.gateEnt(); if (ge) orderMove(g, army().map((e) => e.id), ge.x + 2, ge.z + 2); }
-      const need = target === 0 ? 12 : target === 1 ? 18 : 24;
+      const need = Math.min(Math.max(cap, 6), lairI >= 0 ? 9 + lairI * 3 : campI === 0 ? 12 : campI === 1 ? 18 : 24);
       const healthy = army().every((e) => e.hp > UNITS[e.kind].hp * 0.8);
-      if (!attacked && army().length >= need && healthy) { attacked = true; if (!tArmy) tArmy = t; log.push(`${(t / 60).toFixed(1)}m attack ${CAMPS[target].name} with ${army().length}`); }
+      if (!attacked && army().length >= need && healthy) { attacked = true; if (!tArmy) tArmy = t; log.push(`${(t / 60).toFixed(1)}m attack ${lairI >= 0 ? 'lair ' + (lairI + 1) : CAMPS[campI].name} with ${army().length}`); }
       if (attacked && army().length < need * 0.35) { attacked = false; losses++; const ge = g.gateEnt()!; orderMove(g, army().map((e) => e.id), ge.x + 2, ge.z + 2); log.push(`${(t / 60).toFixed(1)}m retreat`); }
-      if (attacked && t % 5 === 0) orderAttack(g, army().map((e) => e.id), S.camps[target].entId);
-      if (!S.camps[target].alive || (attacked && S.camps.findIndex((c) => c.alive) !== target)) { attacked = false; }
-      if (target > 0 && !camp1) { camp1 = t; log.push(`${(t / 60).toFixed(1)}m first stronghold down`); }
-      if (target > 1 && !camp2) { camp2 = t; log.push(`${(t / 60).toFixed(1)}m second stronghold down`); }
+      if (attacked && t % 5 === 0) orderAttack(g, army().map((e) => e.id), tEnt);
+      // light powers, used the way a player would in a fight
+      if (attacked && tPos) {
+        const fighting = army().filter((e) => Math.hypot(e.x - tPos.x, e.z - tPos.z) < 9);
+        if (fighting.length >= 4) {
+          cast(g, 'rally');
+          const foes = S.entities.filter((e) => e.team === 1 && e.kind !== 'camp' && e.kind !== 'lair' && Math.hypot(e.x - tPos.x, e.z - tPos.z) < 7);
+          if (foes.length >= 3) { const c = foes.reduce((a, e) => ({ x: a.x + e.x / foes.length, z: a.z + e.z / foes.length }), { x: 0, z: 0 }); cast(g, 'burst', c.x, c.z); }
+          const hurt = fighting.filter((e) => e.hp < UNITS[e.kind].hp * 0.5);
+          if (hurt.length >= 3) cast(g, 'mend', hurt[0].x, hurt[0].z);
+        }
+      }
+      if (campI > 0 && !camp1) { camp1 = t; log.push(`${(t / 60).toFixed(1)}m first stronghold down`); }
+      if (campI > 1 && !camp2) { camp2 = t; log.push(`${(t / 60).toFixed(1)}m second stronghold down`); }
     }
-  return { seed, built: pi, planned: plan.length, gate: tGate / 60, army: tArmy / 60, win: tWin / 60, retreats: losses, minGold, pop: S.pop, income: S.income, raids: S.raidCount, quest: S.quest, left: armySize(g), log, game: g };
+  return { relics: S.relics.length, casts: S.stats.casts, seed, built: pi, planned: plan.length, gate: tGate / 60, army: tArmy / 60, win: tWin / 60, retreats: losses, minGold, pop: S.pop, income: S.income, raids: S.raidCount, quest: S.quest, left: armySize(g), log, game: g };
 }

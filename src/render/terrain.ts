@@ -17,6 +17,9 @@ export class Terrain {
   crystals: THREE.Group;
   private light: Float32Array;
   private dark: Float32Array;
+  private darkBase: Float32Array; // dark-world colours before the fog is applied
+  private fogVer = -1;
+  private visTex: THREE.DataTexture;
   private lightAttr: THREE.BufferAttribute;
   private darkAttr: THREE.BufferAttribute;
   private heightTex: THREE.DataTexture;
@@ -28,7 +31,7 @@ export class Terrain {
     const geo = new THREE.BufferGeometry();
     const nv = N * N * 6;
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(nv * 3), 3));
-    this.light = new Float32Array(nv * 3); this.dark = new Float32Array(nv * 3);
+    this.light = new Float32Array(nv * 3); this.dark = new Float32Array(nv * 3); this.darkBase = new Float32Array(nv * 3);
     this.lightAttr = new THREE.BufferAttribute(this.light, 3);
     this.darkAttr = new THREE.BufferAttribute(this.dark, 3);
     geo.setAttribute('color', this.lightAttr);
@@ -39,7 +42,10 @@ export class Terrain {
     // water
     this.heightTex = new THREE.DataTexture(new Uint8Array((N + 1) * (N + 1) * 4), N + 1, N + 1, THREE.RGBAFormat);
     this.heightTex.magFilter = this.heightTex.minFilter = THREE.LinearFilter;
+    this.visTex = new THREE.DataTexture(new Uint8Array(N * N * 4).fill(255), N, N, THREE.RGBAFormat);
+    this.visTex.magFilter = this.visTex.minFilter = THREE.LinearFilter; this.visTex.needsUpdate = true;
     this.waterU = {
+      uVis: { value: this.visTex }, uFog: { value: 0 },
       uTime: { value: 0 }, uH: { value: this.heightTex }, uN: { value: N },
       uShallow: { value: new THREE.Color(0x4fd0c8) }, uDeep: { value: new THREE.Color(0x1a5f9c) },
       uFoam: { value: new THREE.Color(0xffffff) }, uFogColor: { value: new THREE.Color() }, uFogDensity: { value: 0.01 },
@@ -49,7 +55,7 @@ export class Terrain {
       uniforms: this.waterU, transparent: true,
       vertexShader: `varying vec3 vW; varying float vDist;
         void main(){ vec4 w = modelMatrix * vec4(position,1.); vW = w.xyz; vec4 mv = viewMatrix * w; vDist = -mv.z; gl_Position = projectionMatrix * mv; }`,
-      fragmentShader: `uniform float uTime, uN, uFogDensity, uGlow; uniform sampler2D uH; uniform vec3 uShallow, uDeep, uFoam, uFogColor;
+      fragmentShader: `uniform float uTime, uN, uFogDensity, uGlow, uFog; uniform sampler2D uH, uVis; uniform vec3 uShallow, uDeep, uFoam, uFogColor;
         varying vec3 vW; varying float vDist;
         float hsh(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
@@ -68,6 +74,9 @@ export class Terrain {
           col = mix(col, uFoam, clamp(foam, 0., 1.) * (0.85 - uGlow * 0.3));
           col += uFoam * spark * (0.35 + uGlow);
           float alpha = mix(0.55, 0.93, smoothstep(0., 0.5, depth));
+          vec2 vuv = vW.xz / uN;
+          float lit = (vuv.x > 0. && vuv.x < 1. && vuv.y > 0. && vuv.y < 1.) ? texture2D(uVis, vuv).r : 0.;
+          col *= mix(1., mix(0.14, 1., lit), uFog);
           float fog = 1. - exp(-uFogDensity * uFogDensity * vDist * vDist);
           col = mix(col, uFogColor, fog);
           gl_FragColor = vec4(col, max(alpha, fog));
@@ -118,6 +127,19 @@ export class Terrain {
       });
       this.crystals.add(im);
     }
+    // glowing mushrooms under the dead trees
+    const mush = mergeGeometries([new THREE.CylinderGeometry(0.025, 0.035, 0.14, 5).translate(0, 0.07, 0), new THREE.ConeGeometry(0.11, 0.09, 6).translate(0, 0.17, 0)]);
+    const spots: number[] = [];
+    for (let i = 0; i < N * N; i++) if (W.type[i] === T.Forest && hash(i * 7 + 3) < 0.09) spots.push(i);
+    const mm = new THREE.InstancedMesh(mush, S.mushroom, spots.length * 3);
+    {
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+      spots.forEach((i, n) => { for (let j = 0; j < 3; j++) {
+        const x = (i % N) + 0.15 + hash(i * 3 + j * 11) * 0.7, z = ((i / N) | 0) + 0.15 + hash(i * 13 + j * 5) * 0.7, sc = 0.7 + hash(i + j * 9) * 1.1;
+        m4.compose(p.set(x, W.heightAt(x, z), z), q, s.setScalar(sc)); mm.setMatrixAt(n * 3 + j, m4);
+      } });
+    }
+    this.crystals.add(mm);
     this.crystals.visible = false;
     this.group.add(this.crystals);
     this.update();
@@ -132,12 +154,15 @@ export class Terrain {
     (u.uDeep.value as THREE.Color).setHex(dark ? 0x07050f : 0x1a5f9c);
     (u.uFoam.value as THREE.Color).setHex(dark ? 0xb07cff : 0xffffff);
     u.uGlow.value = dark ? 0.8 : 0;
+    u.uFog.value = dark ? 1 : 0;
+    this.fogVer = -1;
   }
 
   update() {
     const g = this.game;
     if (this.ver.t !== g.terrainVer) { this.ver.t = g.terrainVer; this.rebuildTerrain(); this.ver.tr = -1; this.ver.r = -1; }
     if (this.ver.r !== g.roadVer) { this.ver.r = g.roadVer; this.rebuildRoads(); this.rebuildColors(); }
+    if (this.isDark && this.fogVer !== g.visVer) this.applyFog();
     if (this.ver.tr !== g.treeVer) { this.ver.tr = g.treeVer; this.rebuildTrees(); this.rebuildColors(); }
   }
 
@@ -162,7 +187,7 @@ export class Terrain {
 
   private rebuildColors() {
     const g = this.game, W = g.world;
-    const L = this.light, D = this.dark;
+    const L = this.light, D = this.darkBase;
     let k = 0;
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
       const i = z * N + x, t = W.type[i], hh = W.tileH(x, z);
@@ -184,7 +209,39 @@ export class Terrain {
       if (g.blight[i] && t !== T.Water) c2.lerp(new THREE.Color(0x4a1226), 0.6);
       for (let v = 0; v < 6; v++) { L[k] = c.r; L[k + 1] = c.g; L[k + 2] = c.b; D[k] = c2.r; D[k + 1] = c2.g; D[k + 2] = c2.b; k += 3; }
     }
-    this.lightAttr.needsUpdate = true; this.darkAttr.needsUpdate = true;
+    this.lightAttr.needsUpdate = true;
+    this.fogVer = -1; this.applyFog();
+  }
+
+  /** Darken the dark-world terrain and sea wherever the player's light has not reached. */
+  private applyFog() {
+    const vis = this.game.vis, S1 = N + 1;
+    this.fogVer = this.game.visVer;
+    // per-corner brightness, averaged from the tiles around it, so the edge of the light is soft
+    const f = (i: number) => (vis[i] === 2 ? 1 : vis[i] === 1 ? 0.5 : 0.13);
+    const corner = new Float32Array(S1 * S1);
+    for (let z = 0; z <= N; z++) for (let x = 0; x <= N; x++) {
+      let sum = 0, n = 0;
+      for (let dz = -1; dz <= 0; dz++) for (let dx = -1; dx <= 0; dx++) {
+        const tx = x + dx, tz = z + dz;
+        if (tx >= 0 && tz >= 0 && tx < N && tz < N) { sum += f(tz * N + tx); n++; }
+      }
+      corner[z * S1 + x] = sum / n;
+    }
+    const D = this.dark, B = this.darkBase;
+    const odd = [0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1], even = [0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0];
+    let k = 0;
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      const o = (x + z) % 2 ? odd : even;
+      for (let v = 0; v < 6; v++) {
+        const c = corner[(z + o[v * 2 + 1]) * S1 + x + o[v * 2]];
+        D[k] = B[k] * c; D[k + 1] = B[k + 1] * c; D[k + 2] = B[k + 2] * c; k += 3;
+      }
+    }
+    this.darkAttr.needsUpdate = true;
+    const d = this.visTex.image.data as Uint8Array;
+    for (let i = 0; i < N * N; i++) d[i * 4] = vis[i] === 2 ? 255 : vis[i] === 1 ? 110 : 0;
+    this.visTex.needsUpdate = true;
   }
 
   private rebuildRoads() {

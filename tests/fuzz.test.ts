@@ -7,6 +7,7 @@ import { orderAttack, orderAttackMove, orderMove, placeBeacon, train } from '../
 import { buy, deliver, sell } from '../src/sim/trade';
 import { N, mulberry32 } from '../src/sim/world';
 import { invariants, link } from './helpers';
+import { cast } from '../src/sim/dark';
 
 const TYPES = (Object.keys(BUILDINGS) as BuildingId[]).filter((t) => t !== 'townhall');
 
@@ -52,6 +53,7 @@ function monkey(seed: number, steps: number, difficulty: number) {
     else if (a < 79) { const good = GOOD_IDS[ri(GOOD_IDS.length)]; S.orders[good] = { mode: (['none', 'sell', 'buy'] as const)[ri(3)], level: ri(80) }; }
     else if (a < 81 && S.buildings.length > 1) { const b = S.buildings[ri(S.buildings.length)]; b.paused = !b.paused; }
     else if (a < 82) { S.autoUpgrade = !S.autoUpgrade; }
+    else if (a < 86 && a >= 84) { const id = (['burst', 'mend', 'rally'] as const)[ri(3)]; const [x, z] = r() < 0.7 && g.gateEnt() ? [g.gateEnt()!.x + ri(9) - 4, g.gateEnt()!.z + ri(9) - 4] : any(); S.stock.shards = Math.max(S.stock.shards, 3); if (!cast(g, id, x, z)) did('cast'); }
     else if (a < 84) { const json = g.serialize(); const g2 = Game.load(json); expect(g2).not.toBeNull(); expect(g2!.serialize()).toBe(json); g = g2!; did('reload'); }
     // time passes (mostly a little, sometimes a lot)
     const ticks = r() < 0.05 ? 300 : 5 + ri(25);

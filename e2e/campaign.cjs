@@ -69,7 +69,7 @@ const fail = (m) => { fails.push(m); console.log('  !! ' + m); };
         const foot = new Set();
         let forest = false;
         for (let a = 0; a < d.size; a++) for (let c = 0; c < d.size; c++) { foot.add((z + c) * N + x + a); if (g.world.type[(z + c) * N + x + a] === 3) forest = true; }
-        if (forest && type !== 'woodcutter' && type !== 'forester') continue;
+        if (forest && type !== 'woodcutter' && type !== 'forester' && type !== 'gate') continue;
         if (d.category === 'decor') return { x, z, size: d.size, roads: [] };
         const roads = T.route(x - 1, z, foot);
         if (!roads) continue;
@@ -240,7 +240,7 @@ const fail = (m) => { fails.push(m); console.log('  !! ' + m); };
     'mine', 'forge', 'house', 'house', 'statue', 'fountain', 'gate', 'barracks', 'house', 'house', 'barracks'];
   const later = () => ['fishery', 'farm', 'bakery', 'sheepfarm', 'weaver', 'market', 'chapel', 'barracks', 'barracks', 'mine', 'forge', 'forge'];
   const laterMax = { fishery: 3, farm: 2, bakery: 2, sheepfarm: 2, weaver: 2, market: 2, chapel: 2, barracks: 4, mine: 2, forge: 3, house: 38, spire: 1 };
-  let needScroll = 0, lastDiag = -999, lastTarget = 0;
+  let needScroll = 0, lastDiag = -999, lastTarget = 0, casts = 0;
   let pi = 0, attacking = false, harvested = false, lastChore = -999, lastWar = -999, shots = new Set(), darkVisits = 0, t0 = Date.now();
   const once = async (name) => { if (!shots.has(name)) { shots.add(name); await p.waitForTimeout(700); await shot(name); } };
 
@@ -343,8 +343,12 @@ const fail = (m) => { fails.push(m); console.log('  !! ' + m); };
             await p.keyboard.press('f');
             await camTo(c.x, c.z);
             await clickWorld(c.x, c.z, 'right');
-            const ordered = await p.evaluate(() => window.dal.game.state.entities.filter((e) => e.team === 0 && e.order === 2).length);
-            if (!ordered) fail('right-click on a stronghold gave no attack orders');
+            // while the stronghold is still in the dark the click is a march order; once lit it is an attack
+            const ordered = await p.evaluate(() => window.dal.game.state.entities.filter((e) => e.team === 0 && (e.order === 2 || e.order === 1)).length);
+            if (!ordered) fail('right-click on a stronghold gave no orders');
+            // light powers in the thick of it
+            const near = await p.evaluate(([x, z]) => window.dal.game.state.entities.filter((e) => e.team === 0 && Math.hypot(e.x - x, e.z - z) < 8).length, [c.x, c.z]);
+            if (near >= 4) { const c0 = (await snap()).stats.casts; await p.keyboard.press('t'); await p.keyboard.press('z'); if (await p.evaluate(() => window.dal.casting)) await clickWorld(c.x + 1.5, c.z + 1.5); await p.keyboard.press('Escape'); await p.keyboard.press('f'); const c1 = (await snap()).stats.casts; if (c1 > c0) casts += c1 - c0; }
             if (target === 0) await once('battle-1'); if (target === 2) await once('battle-3');
           }
         }
@@ -381,7 +385,7 @@ const fail = (m) => { fails.push(m); console.log('  !! ' + m); };
   console.log(`buildings ${JSON.stringify(s.counts)}`);
   console.log(`pop ${s.pop} gold ${Math.round(s.gold)} income ${Math.round(s.income)} stats ${JSON.stringify(s.stats)} final quest "${h.quest}"`);
   console.log(`save/continue ${JSON.stringify(before)} -> ${JSON.stringify(after)}`);
-  console.log(`sell buttons that needed scrolling into view: ${needScroll}`);
+  console.log(`sell buttons that needed scrolling into view: ${needScroll} | light powers cast via keys+click: ${casts} | relics ${JSON.stringify(await p.evaluate(() => window.dal.game.state.relics))}`);
   console.log(`UI action failures: ${fails.length}`); fails.forEach((f) => console.log('  - ' + f));
   console.log(`console errors: ${errs.length}`); errs.slice(0, 10).forEach((e) => console.log('  - ' + e));
   await b.close();

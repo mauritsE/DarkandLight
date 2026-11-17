@@ -1,9 +1,11 @@
 import {
+  ABILITIES, ABILITY_IDS, AbilityId, RELICS, RelicId,
   ARMY_PER_BARRACKS, BEAUTY_TAX, BUILDINGS, BuildingId, CAMPS, CHAPEL_RANGE, Category, Cost, GOODS, GOOD_IDS, Good, MAX_BEACONS, MERCHANTS,
   ROAD_COST, SPIRE_RANGE, TIERS, TRAINABLE, TRAIN_TIME, UNITS, UnitKind,
 } from '../sim/defs';
 import type { Game } from '../sim/game';
 import { armyCap, armySize, canTrain, train } from '../sim/combat';
+import { canCast } from '../sim/dark';
 import { QUESTS } from '../sim/quests';
 import { buy, buyPrice, canDeliver, deliver, sell, sellPrice } from '../sim/trade';
 import type { Status } from '../sim/state';
@@ -13,7 +15,8 @@ import type { Sound } from './audio';
 
 export interface App {
   game: Game; renderer: Renderer; sound: Sound;
-  dark: boolean; tool: PreviewKind; speed: number; charge: boolean;
+  dark: boolean; tool: PreviewKind; speed: number; charge: boolean; casting: AbilityId | null;
+  startCast(id: AbilityId): void;
   retreat(): void;
   setTool(t: PreviewKind): void;
   toggleWorld(): void;
@@ -40,11 +43,13 @@ export class Hud {
   private mapBase: HTMLCanvasElement = document.createElement('canvas');
   private mapKey = '';
   private goodEls = {} as Record<Good, HTMLElement>;
+  private fogCv: HTMLCanvasElement = document.createElement('canvas');
   private seen = new Set<Good>();
   private seenFor: unknown = null;
 
   constructor(private app: App) {
     this.mapBase.width = this.mapBase.height = N;
+    this.fogCv.width = this.fogCv.height = N;
     const tb = $('topbar');
     tb.innerHTML = `
       <div class="stat main click" data-act="ledger" title="Gold — click for the ledger">🪙 <b id="s-gold"></b> <small id="s-inc"></small></div>
@@ -105,6 +110,7 @@ export class Hud {
       case 'deliver': if (deliver(g, +d.i!)) snd.quest(); else snd.error(); break;
       case 'charge': app.charge = !app.charge; snd.click(); break;
       case 'retreat': app.retreat(); break;
+      case 'cast': app.startCast(d.a as AbilityId); break;
       case 'demolish': if (g.demolish(+d.id!)) { snd.demolish(); this.closePanel(); } break;
       case 'pause': { const b = g.byId.get(+d.id!); if (b) b.paused = !b.paused; break; }
       case 'auto': g.state.autoUpgrade = !g.state.autoUpgrade; break;
@@ -208,6 +214,12 @@ export class Hud {
     } else if (kind === 'u') {
       const d = UNITS[id as UnitKind];
       h = `<h3>${d.icon} ${d.name}</h3><p>${d.desc}</p><p>${this.cost(d.gold ?? 0, d.cost ?? {})}</p><p class="muted">❤ ${d.hp} · ⚔ ${d.dmg} · range ${d.range} · upkeep 🪙 ${d.upkeep}/min</p>`;
+    } else if (kind === 'a') {
+      const d = ABILITIES[id as AbilityId], why = canCast(this.g, id as AbilityId);
+      h = `<h3>${d.icon} ${d.name} <kbd>${d.key}</kbd></h3><p>${d.desc}</p><p><span class="pill ${this.g.state.stock.shards < d.shards ? 'lack' : ''}">🔮 ${d.shards}</span> <span class="pill">⏳ ${d.cd}s</span></p>${why ? `<p class="no">${why}</p>` : d.targeted ? '<p class="muted">Click the button, then a spot your light reaches.</p>' : ''}`;
+    } else if (kind === 'r') {
+      const d = RELICS[id as RelicId];
+      h = `<h3>${d.icon} ${d.name}</h3><p>${d.desc}</p><p class="muted">Relic claimed from a creature lair.</p>`;
     } else if (kind === 't') {
       h = id === 'road' ? `<h3>🛤️ Road</h3><p>Connects buildings to the Keep. Drag to draw.</p><p><span class="pill">🪙 ${ROAD_COST} per tile</span></p>`
         : `<h3>🧨 Demolish</h3><p>Remove roads and buildings. Half the gold is refunded.</p>`;
@@ -300,9 +312,16 @@ export class Hud {
         <div class="col"><button class="${app.charge ? 'on' : ''}" data-act="charge" title="Next order: march and fight everything on the way (or Shift + right-click)">⚔ Charge <kbd>C</kbd></button>
         <button data-act="retreat" title="Selected soldiers fall back to the Rift Gate to heal">↩ Retreat <kbd>G</kbd></button></div><div class="items">`;
       h += this.trainButtons();
+      h += '<span class="vsep"></span>';
+      for (const id of ABILITY_IDS) {
+        const d = ABILITIES[id], cd = S.abil[id], why = canCast(g, id);
+        h += `<button class="bbtn power ${app.casting === id ? 'on' : ''} ${why ? 'poor' : ''} ${id === 'rally' && S.abil.rallyT > 0 ? 'active' : ''}" data-act="cast" data-a="${id}" data-tip="a:${id}"><span class="ic">${d.icon}</span><span class="nm">${d.name.split(' ')[0]}</span><span class="lock"><kbd>${d.key}</kbd></span>${cd > 0 ? `<i class="cd" style="height:${(cd / d.cd) * 100}%"></i><b class="cdn">${Math.ceil(cd)}</b>` : ''}</button>`;
+      }
+      h += '<span class="vsep"></span>';
       h += `<button class="bbtn ${app.tool === 'beacon' ? 'on' : ''}" data-act="tool" data-t="beacon" data-tip="u:beacon" ${beacons >= MAX_BEACONS ? 'disabled' : ''}><span class="ic">🕯️</span><span class="nm">Beacon</span><span class="lock">${beacons}/${MAX_BEACONS}</span></button>`;
       h += `</div><div class="col army hint muted ${S.trainQ.length ? '' : 'idle'}">${S.trainQ.length ? `Training ${UNITS[S.trainQ[0]].name}…<div class="bar"><i style="width:${(1 - S.trainT / TRAIN_TIME) * 100}%"></i></div>${S.trainQ.length > 1 ? `+${S.trainQ.length - 1} queued` : ''}`
-        : 'Right-click to move or attack. Units heal near the Rift Gate.'}</div>`;
+        : app.casting ? `Click where to cast ${ABILITIES[app.casting].name}. Right-click cancels.` : 'Right-click to move or attack. Units heal near the Rift Gate.'}
+        ${S.relics.length || S.lairs.some((l) => l.alive) ? `<div class="relics">${S.relics.map((r) => `<span data-tip="r:${r}">${RELICS[r as RelicId].icon}</span>`).join('')}${S.lairs.filter((l) => l.alive).map(() => '<span class="empty" title="A relic waits in an uncleared lair">◌</span>').join('')}</div>` : ''}</div>`;
     }
     this.set('bottombar', h);
   }
@@ -356,6 +375,7 @@ export class Hud {
         h += `<p>${e?.down ? `<span class="no">Breached — restoring in ${Math.ceil(S.gateDown)}s</span>` : `Integrity ${Math.ceil(e?.hp ?? 0)} / ${UNITS.gate.hp}`}</p><div class="bar"><i style="width:${((e?.hp ?? 0) / UNITS.gate.hp) * 100}%"></i></div>
           <p class="muted">Strongholds standing: ${S.camps.map((c, i) => (c.alive ? CAMPS[i].name : '')).filter(Boolean).join(', ') || 'none'}.${S.camps.some((c) => c.alive) ? ` Next raid in about ${Math.max(0, Math.ceil(S.raidTimer / 10) * 10)}s.` : ''}</p>`;
       }
+      if (b.type === 'gate' && S.lairs.length) h += `<p>Relics ${S.relics.length} / ${S.lairs.length}</p>${S.relics.map((r) => `<div class="row"><span>${RELICS[r as RelicId].icon}</span><span class="grow"><b>${RELICS[r as RelicId].name}</b> <span class="muted">— ${RELICS[r as RelicId].desc}</span></span></div>`).join('') || '<p class="muted">Clear creature lairs in the Dark World to claim them.</p>'}`;
       h += `<div class="row" style="margin-top:8px">`;
       if (d.cycle && d.outputs) h += `<button data-act="pause" data-id="${b.id}">${b.paused ? '▶ Resume' : '⏸ Pause'}</button>`;
       if (b.type !== 'townhall' && b.type !== 'gate') h += `<span class="grow"></span><button data-act="demolish" data-id="${b.id}">🧨 Demolish</button>`;
@@ -445,6 +465,16 @@ export class Hud {
     const cv = $('minimap') as HTMLCanvasElement, x = cv.getContext('2d')!, k = cv.width / N;
     x.imageSmoothingEnabled = false;
     x.drawImage(this.mapBase, 0, 0, cv.width, cv.height);
+    const lit = (wx: number, wz: number) => g.vis[Math.floor(wz) * N + Math.floor(wx)] ?? 0;
+    if (app.dark) {
+      // the unlit dark: black where light never reached, dim where it once did
+      const fx = this.fogCv.getContext('2d')!, img = fx.createImageData(N, N);
+      for (let i = 0; i < N * N; i++) { img.data[i * 4 + 3] = g.vis[i] === 2 ? 0 : g.vis[i] === 1 ? 120 : 235; }
+      fx.putImageData(img, 0, 0);
+      x.imageSmoothingEnabled = true;
+      x.drawImage(this.fogCv, 0, 0, cv.width, cv.height);
+      x.imageSmoothingEnabled = false;
+    }
     x.fillStyle = app.dark ? 'rgba(180,170,220,0.45)' : '#d8c8a0';
     for (const i of g.state.roads) x.fillRect((i % N) * k, ((i / N) | 0) * k, k, k);
     for (const b of g.state.buildings) {
@@ -458,10 +488,12 @@ export class Hud {
       x.fillStyle = c.alive ? `#${CAMPS[i].color.toString(16).padStart(6, '0')}` : '#ffe9a8'; x.fill();
       x.strokeStyle = '#000'; x.lineWidth = 1; x.stroke();
     });
-    if (app.dark) for (const n of g.state.nodes) if (n.ready) { x.fillStyle = '#ff7ad9'; x.fillRect(n.x * k - 2, n.z * k - 2, 4, 4); }
+    if (app.dark) for (const n of g.state.nodes) if (n.ready && lit(n.x, n.z) >= 1) { x.fillStyle = '#ff7ad9'; x.fillRect(n.x * k - 2, n.z * k - 2, 4, 4); }
+    if (app.dark) for (const L of g.state.lairs) if (L.alive && lit(L.x, L.z) >= 1) { x.fillStyle = '#c070ff'; x.beginPath(); x.moveTo(L.x * k, L.z * k - 4); x.lineTo(L.x * k + 4, L.z * k + 3); x.lineTo(L.x * k - 4, L.z * k + 3); x.fill(); x.strokeStyle = '#000'; x.lineWidth = 1; x.stroke(); }
     if (app.dark || g.state.entities.some((e) => e.raid)) {
       for (const e of g.state.entities) {
-        if (e.kind === 'camp' || e.kind === 'gate') continue;
+        if (e.kind === 'camp' || e.kind === 'gate' || e.kind === 'lair') continue;
+        if (e.team === 1 && app.dark && lit(e.x, e.z) !== 2) continue;
         x.fillStyle = e.team === 0 ? '#ffe08a' : '#ff4a6a';
         if (e.team === 1 && !app.dark && !e.raid) continue;
         x.fillRect(e.x * k - 1.5, e.z * k - 1.5, 3, 3);
